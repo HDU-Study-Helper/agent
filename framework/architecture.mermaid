@@ -1,0 +1,20 @@
+flowchart TB
+    Host["可信后端调用方 / 未来业务 Agent"] --> Service["backend/internal/agent.Service\nGo Runner + bridge.Port"]
+    Service --> Registry["Agent Registry\n实例配置与归属"]
+    Service --> Runtime["Agent Runtime\n上下文 / 预算 / 多轮 Tool Calling"]
+    Runtime --> Models["ModelProvider\nOpenAI Chat Completions Adapter"]
+    Runtime --> Memory["自动加载私有记忆\n长度预算与确定性排序"]
+    Runtime --> Tools["Tool Registry\n权限 / JSON Schema / 超时 / 输出契约"]
+    Tools --> CRUD["Memory + Workflow 定义工具"]
+    Tools --> Search["SearchProvider\nDeepSeek Search / Fetch"]
+    Tools --> Internal["Internal Bridge\n进程内接口调用"]
+    Internal --> Notifications["后端 NotificationService\n未配置时明确报错"]
+    Internal --> Data["后端 DataService\n数据集与字段白名单 / 用户范围 / 只读"]
+    Internal -->|"agent.run + 可信父执行上下文"| Service
+    Registry --> Repo["Repository Interface"]
+    Memory --> Repo
+    CRUD --> Repo
+    Runtime -->|"运行记录"| Repo
+    Repo --> DBBridge["现有 dbbridge\n唯一 PostgreSQL / 事务 / v5 迁移"]
+    Data --> DBBridge
+    DBBridge --> PostgreSQL[("PostgreSQL")]

@@ -1,0 +1,73 @@
+
+flowchart TB
+    subgraph SOURCES["信息来源"]
+        D["钉钉 DWS"]
+        C["学习通"]
+        U["U校园"]
+        S["教务系统"]
+        UP["用户上传 / 用户输入"]
+    end
+
+    subgraph INGEST["数据采集层"]
+        POLL["定时轮询 / 按需同步"]
+        DIFF["Diff Engine<br/>新增、修改、删除检测"]
+        RAW[("原始证据存储")]
+    end
+
+    D --> POLL
+    C --> POLL
+    U --> POLL
+    S --> POLL
+    UP --> RAW
+    POLL --> DIFF
+    DIFF --> RAW
+
+    subgraph FILTER["Filter Agent · 感知与路由"]
+        FM[("路由记忆")]
+        REG[("用户 Workflow Registry")]
+        FA["识别、归属、匹配、分发"]
+        FM <--> FA
+        REG --> FA
+    end
+
+    RAW -->|"发现有意义的 Diff"| FA
+
+    subgraph WORKFLOWS["Workflow 空间"]
+        BASE["公共基础 Workflow"]
+        MATH["工科数分 Workflow"]
+        ENG["通用英语 Workflow"]
+        CLUB["宣传部干事 Workflow"]
+    end
+
+    FA --> BASE
+    FA --> MATH
+    FA --> ENG
+    FA --> CLUB
+
+    subgraph WORKER["Worker Agent · 工作流执行"]
+        WA["执行工作流节点"]
+        CAP["调用原子能力 / 小 Agent"]
+    end
+
+    BASE --> WA
+    MATH --> WA
+    ENG --> WA
+    CLUB --> WA
+    WA <--> CAP
+
+    WA --> CONV["结果收敛层"]
+    CONV --> STATE[("统一用户状态与证据")]
+    STATE --> APP["Android App"]
+
+    subgraph LEARNER["Learner Agent · 反馈与演进"]
+        FB["用户反馈 / 执行日志 / 结果偏差"]
+        EV["分析、验证、提出演进"]
+    end
+
+    APP --> FB
+    WA -.-> FB
+    STATE -.-> FB
+    FB --> EV
+    EV -.->|"修改工作流"| WORKFLOWS
+    EV -.->|"修正路由记忆"| FM
+  

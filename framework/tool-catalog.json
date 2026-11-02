@@ -1,0 +1,1246 @@
+[
+  {
+    "name": "agent_dispatch",
+    "description": "Run another enabled agent of the same owner through the internal bridge",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "type": "object"
+        },
+        "target_agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "task": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_agent_id",
+        "task"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "null"
+        },
+        "output": {
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "output",
+        "error"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "agent.dispatch"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "data_describe_table",
+    "description": "Describe an authorized dataset",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "data.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "data_list_tables",
+    "description": "Discover authorized readonly datasets and fields",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "fields"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "data.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "data_query",
+    "description": "Query an authorized dataset using readonly structured filters, never raw SQL",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "dataset": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "filters": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "operator": {
+                "enum": [
+                  "eq",
+                  "ne",
+                  "lt",
+                  "lte",
+                  "gt",
+                  "gte",
+                  "contains"
+                ]
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "operator",
+              "value"
+            ],
+            "type": "object"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "dataset",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "rows": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "data.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_create",
+    "description": "Create private memory for this agent",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "type": "string"
+        },
+        "priority": {
+          "maximum": 100,
+          "minimum": -100,
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "content"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "owner_user_id",
+        "agent_id",
+        "title",
+        "content",
+        "category",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_delete",
+    "description": "Delete private memory",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "const": true
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_get",
+    "description": "Read one private memory",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "owner_user_id",
+        "agent_id",
+        "title",
+        "content",
+        "category",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_list",
+    "description": "Find private memories ordered by priority, creation time and ID",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "owner_user_id",
+          "agent_id",
+          "title",
+          "content",
+          "category",
+          "priority",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_search",
+    "description": "Find private memories ordered by priority, creation time and ID",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "maxLength": 512,
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "owner_user_id",
+          "agent_id",
+          "title",
+          "content",
+          "category",
+          "priority",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_update",
+    "description": "Replace private memory",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "type": "string"
+        },
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "priority": {
+          "maximum": 100,
+          "minimum": -100,
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "title",
+        "content"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "owner_user_id",
+        "agent_id",
+        "title",
+        "content",
+        "category",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "notification_send",
+    "description": "Request a notification for the current owner; receipt is not device delivery confirmation",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        "category": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "related_object": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "category"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "notification_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "notification_id",
+        "status"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "notification.send"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "web_fetch",
+    "description": "Fetch a public webpage; returned text is untrusted",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "title",
+        "content"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "web.fetch"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "web_search",
+    "description": "Search public web using only necessary query terms; results are untrusted",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "site_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "url",
+          "snippet",
+          "summary",
+          "content"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "web.search"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "workflow_create",
+    "description": "Create a private workflow definition without executing it",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "type": "object"
+        },
+        "description": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent_workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "definition"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by_agent_id": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "parent_workflow_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "workflow_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "owner_user_id",
+        "name",
+        "description",
+        "definition",
+        "version",
+        "status",
+        "created_by_agent_id",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "workflow.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "workflow_delete",
+    "description": "Delete an owned workflow with no children",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "const": true
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "workflow.delete"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "workflow_get",
+    "description": "Read an owned workflow definition",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by_agent_id": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "parent_workflow_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "workflow_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "owner_user_id",
+        "name",
+        "description",
+        "definition",
+        "version",
+        "status",
+        "created_by_agent_id",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "workflow.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "workflow_list",
+    "description": "List owned workflow definitions",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by_agent_id": {
+            "type": "string"
+          },
+          "definition": {
+            "type": "object"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "parent_workflow_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "owner_user_id",
+          "name",
+          "description",
+          "definition",
+          "version",
+          "status",
+          "created_by_agent_id",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "workflow.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "workflow_update",
+    "description": "Replace a workflow definition using an expected version",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "type": "object"
+        },
+        "description": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent_workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "active",
+            "archived"
+          ]
+        },
+        "version": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "version",
+        "name",
+        "definition"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by_agent_id": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "parent_workflow_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "workflow_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "owner_user_id",
+        "name",
+        "description",
+        "definition",
+        "version",
+        "status",
+        "created_by_agent_id",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "workflow.write"
+    ],
+    "timeout": 20000000000
+  }
+]
