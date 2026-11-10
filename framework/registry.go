@@ -13,7 +13,7 @@ func (r Registry) Create(ctx context.Context, owner string, d AgentDefinition) (
 	return r.Save(ctx, owner, AgentInstance{ID: NewID(), AgentDefinition: d, Status: "enabled"})
 }
 func (r Registry) Save(ctx context.Context, owner string, a AgentInstance) (AgentInstance, error) {
-	if owner == "" || a.ID == "" || strings.TrimSpace(a.Name) == "" || a.Model.Provider == "" || a.Model.Model == "" || a.SystemPrompt == "" || (a.Status != "enabled" && a.Status != "disabled") {
+	if owner == "" || a.ID == "" || strings.TrimSpace(a.Name) == "" || a.Model.Provider == "" || (a.Model.Model == "" && a.Model.Mode != "default") || (a.Model.Mode != "" && a.Model.Mode != "default" && a.Model.Mode != "custom") || a.SystemPrompt == "" || (a.Status != "enabled" && a.Status != "disabled") {
 		return AgentInstance{}, Fail("INVALID_ARGUMENT", "invalid agent configuration")
 	}
 	a.OwnerID = owner
@@ -32,6 +32,10 @@ func LoadMemories(ctx context.Context, repo Repository, scope Scope, max int) (s
 	result := []Memory{}
 	size := 2
 	for _, m := range memories {
+		now := time.Now()
+		if (m.Status != "" && m.Status != "active") || (m.ValidFrom != nil && m.ValidFrom.After(now)) || (m.ValidUntil != nil && !m.ValidUntil.After(now)) {
+			continue
+		}
 		encoded, _ := json.Marshal(m)
 		if size+len(encoded)+1 > max {
 			continue

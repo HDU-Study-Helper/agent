@@ -175,3 +175,61 @@ func TestProviderHTTPTimeoutIsStructured(t *testing.T) {
 	_, err = provider.Complete(context.Background(), ModelRequest{})
 	requireCode(t, err, "TIMEOUT")
 }
+
+func TestProviderBodyTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	provider, err := NewOpenAIProvider(HTTPConfig{BaseURL: server.URL, APIKey: "test", Timeout: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.Complete(context.Background(), ModelRequest{})
+	requireCode(t, err, "TIMEOUT")
+	if !strings.Contains(SafeError(err).Message, "body") {
+		t.Fatal(err)
+	}
+}
+
+func TestCompatibleGatewayMissingRole(t *testing.T) {
+	for _, tc := range []struct {
+		message   string
+		wantError bool
+	}{
+		{`{"content":"OK"}`, false},
+		{`{"content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"test","arguments":"{}"}}]}`, false},
+		{`{}`, true},
+		{`{"role":"system","content":"unexpected"}`, true},
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, `{"choices":[{"message":`+tc.message+`,"finish_reason":"stop"}]}`)
+		}))
+		provider, _ := NewOpenAIProvider(HTTPConfig{BaseURL: server.URL, APIKey: "test"})
+		result, err := provider.Complete(context.Background(), ModelRequest{})
+		if tc.wantError {
+			requireCode(t, err, "PROVIDER_ERROR")
+		} else if err != nil || result.Message.Role != "assistant" {
+			t.Fatalf("%+v %v", result, err)
+		}
+		server.Close()
+	}
+}
+
+func TestSearchSourceAnchorsAndInvalidEntries(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"results":[{"url":"invalid"},{"url":"https://example.com/docs#api","title":"Docs"}]}`)
+	}))
+	defer server.Close()
+	provider, err := NewDeepSeekProvider(DeepSeekConfig{HTTPConfig: HTTPConfig{BaseURL: server.URL, APIKey: "test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := provider.Search(context.Background(), SearchRequest{Query: "docs", Count: 2})
+	if err != nil || len(results) != 1 || results[0].URL != "https://example.com/docs#api" {
+		t.Fatalf("%+v %v", results, err)
+	}
+}

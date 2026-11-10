@@ -39,7 +39,52 @@ func (n *mockNotification) Send(_ context.Context, s Scope, _ Notification) (Not
 	return NotificationReceipt{ID: "n1", Status: "accepted"}, n.err
 }
 func toolContext(names, permissions []string) ExecutionContext {
-	return ExecutionContext{Scope: Scope{"owner", "a"}, RunID: "run", EnabledTools: names, Permissions: permissions, Limits: Limits{}.Defaults(), budget: &budget{models: 10, tools: 100}}
+	return ExecutionContext{Scope: Scope{OwnerID: "owner", AgentID: "a"}, RunID: "run", EnabledTools: names, Permissions: permissions, Limits: Limits{}.Defaults(), budget: &budget{models: 10, tools: 100}}
+}
+
+type summaryWorkflowRepo struct {
+	Repository
+	workflow Workflow
+}
+
+func (r summaryWorkflowRepo) ListWorkflows(context.Context, string, int, string) ([]Workflow, error) {
+	return []Workflow{r.workflow}, nil
+}
+func (r summaryWorkflowRepo) GetWorkflow(context.Context, string, string) (Workflow, error) {
+	return r.workflow, nil
+}
+func TestWorkflowListSummarizesDefinitionButGetStaysComplete(t *testing.T) {
+	repo := summaryWorkflowRepo{workflow: Workflow{ID: "wf", OwnerID: "owner", Name: "specific course", Description: "description", Version: 2, Status: "active", Definition: json.RawMessage(`{"entity":{"kind":"course","id":"course-1"},"goal":"verify records","instructions":"large repeated instructions"}`)}}
+	registry := NewToolRegistry()
+	if err := (Builtins{Repository: repo}).Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	e := toolContext([]string{"workflow_list", "workflow_get"}, []string{"workflow.read"})
+	result := registry.Execute(context.Background(), e, "workflow_list", json.RawMessage(`{}`))
+	if !result.OK {
+		t.Fatal(result)
+	}
+	raw, _ := json.Marshal(result.Data)
+	var list []Workflow
+	if json.Unmarshal(raw, &list) != nil || len(list) != 1 {
+		t.Fatal(string(raw))
+	}
+	var definition map[string]any
+	json.Unmarshal(list[0].Definition, &definition)
+	if definition["entity"] == nil || definition["goal"] == nil || definition["instructions"] != nil {
+		t.Fatal(definition)
+	}
+	result = registry.Execute(context.Background(), e, "workflow_get", json.RawMessage(`{"workflow_id":"wf"}`))
+	if !result.OK {
+		t.Fatal(result)
+	}
+	raw, _ = json.Marshal(result.Data)
+	var full Workflow
+	json.Unmarshal(raw, &full)
+	json.Unmarshal(full.Definition, &definition)
+	if definition["instructions"] == nil {
+		t.Fatal("full definition lost")
+	}
 }
 func TestBuiltinDataAuthorizationAndOutputChecks(t *testing.T) {
 	d := &mockData{}
@@ -48,7 +93,7 @@ func TestBuiltinDataAuthorizationAndOutputChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := toolContext([]string{"data_query", "data_list_tables", "data_describe_table"}, []string{"data.read"})
-	for _, input := range []string{`{"dataset":"agent_memories","fields":["title"]}`, `{"dataset":"records","fields":["password"]}`, `{"dataset":"records","fields":["title"],"filters":[{"field":"owner_user_id","operator":"eq","value":"other"}]}`, `{"dataset":"records","fields":["title"],"limit":101}`, `{"dataset":"records","fields":["title"],"sql":"SELECT * FROM users"}`} {
+	for _, input := range []string{`{"dataset":"memories","fields":["content"]}`, `{"dataset":"memory_relations","fields":["source_memory_id"]}`, `{"dataset":"agent_memories","fields":["title"]}`, `{"dataset":"records","fields":["password"]}`, `{"dataset":"records","fields":["title"],"filters":[{"field":"owner_user_id","operator":"eq","value":"other"}]}`, `{"dataset":"records","fields":["title"],"limit":101}`, `{"dataset":"records","fields":["title"],"sql":"SELECT * FROM users"}`} {
 		result := registry.Execute(context.Background(), e, "data_query", json.RawMessage(input))
 		if result.OK {
 			t.Fatal("unsafe query accepted", input)

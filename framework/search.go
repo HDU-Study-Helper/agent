@@ -227,19 +227,30 @@ func (p *DeepSeekProvider) Search(ctx context.Context, r SearchRequest) ([]Searc
 	if response.Results == nil {
 		return nil, Fail("PROVIDER_ERROR", "search results missing")
 	}
-	results := *response.Results
-	if len(results) > r.Count {
-		results = results[:r.Count]
-	}
-	for i := range results {
-		if _, err := publicURL(results[i].URL); err != nil {
-			return nil, Fail("PROVIDER_ERROR", "invalid search source URL")
+	results := make([]SearchResult, 0, r.Count)
+	for _, result := range *response.Results {
+		// Search sources are references, not fetch targets; anchors are valid.
+		source, err := url.Parse(result.URL)
+		if err != nil {
+			continue
 		}
-		results[i].Content = clip(results[i].Content, p.config.MaxContentChars)
-		results[i].Summary = clip(results[i].Summary, 2000)
-		results[i].Snippet = clip(results[i].Snippet, 1000)
-		results[i].Title = clip(results[i].Title, 512)
+		source.Fragment = ""
+		if _, err = publicURL(source.String()); err != nil {
+			continue
+		}
+		result.Content = clip(result.Content, p.config.MaxContentChars)
+		result.Summary = clip(result.Summary, 2000)
+		result.Snippet = clip(result.Snippet, 1000)
+		result.Title = clip(result.Title, 512)
+		results = append(results, result)
+		if len(results) == r.Count {
+			break
+		}
 	}
+	if len(*response.Results) > 0 && len(results) == 0 {
+		return nil, Fail("PROVIDER_ERROR", "search returned no valid source URLs")
+	}
+
 	return results, nil
 }
 func (p *DeepSeekProvider) Fetch(ctx context.Context, raw string) (Page, error) {

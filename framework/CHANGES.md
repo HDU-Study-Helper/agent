@@ -53,3 +53,9 @@
 | backend/internal/bridge/README.md | 说明复用 Port 的 Agent/通知/数据内部调用 |
 
 任务原文 `agent/AGENT.md` 和原业务架构图 `agent/architecture.mermaid` 保留不变。现有 App 装配、HTTP 路由、认证、平台采集和客户端未修改。
+
+## 后续：临时 Agent 管理后台
+
+按用户新增要求扩展后台并启动本地 Demo。新增 `backend/internal/agentadmin/{http.go,settings.go,settings_test.go,agents.html,README.md}`、`backend/internal/model/agent_admin.go`、`backend/internal/dbbridge/{agent_admin.go,agent_console_test.go}`。修改 App 启动/路由/配置及配置测试、主后台导航、迁移账本 v6 和迁移测试；框架 types.go/runtime.go 增加可选 ModelProviderResolver，供后端安全切换命名 Provider。相关 README、架构与数据目录同步更新。
+
+Memory V0.2：新增 memories/memory_relations、V9保守迁移、三种归属与有效期/层级、2个关联工具（总数20）、WorkflowContext 与 Runtime 自动加载。详见 [MEMORY-V0.2.md](MEMORY-V0.2.md)。

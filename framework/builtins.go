@@ -42,7 +42,36 @@ type Query struct {
 	Offset  int      `json:"offset"`
 }
 type QueryResult struct {
-	Rows []map[string]any `json:"rows"`
+	Rows       []map[string]any `json:"rows"`
+	HasMore    bool             `json:"has_more"`
+	NextOffset *int             `json:"next_offset,omitempty"`
+}
+
+type KeywordSearchRequest struct {
+	Keywords []string `json:"keywords"`
+	Datasets []string `json:"datasets,omitempty"`
+	Cursor   string   `json:"cursor,omitempty"`
+	Limit    int      `json:"limit"`
+}
+type KeywordSearchHit struct {
+	Dataset string         `json:"dataset"`
+	Row     map[string]any `json:"row"`
+}
+type KeywordSearchCoverage struct {
+	Dataset  string `json:"dataset"`
+	Matched  int    `json:"matched"`
+	Complete bool   `json:"complete"`
+}
+type KeywordSearchResult struct {
+	Hits       []KeywordSearchHit      `json:"hits"`
+	Coverage   []KeywordSearchCoverage `json:"coverage"`
+	HasMore    bool                    `json:"has_more"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+}
+
+// KeywordSearchService is an optional host capability for authorized cross-dataset search.
+type KeywordSearchService interface {
+	SearchKeywords(context.Context, Scope, KeywordSearchRequest) (KeywordSearchResult, error)
 }
 
 // DataService must expose only authorized catalog entries, enforce owner/course memberships,
@@ -97,49 +126,15 @@ func object(properties map[string]any, required ...string) json.RawMessage {
 func decode[T any](raw json.RawMessage) T { var t T; _ = json.Unmarshal(raw, &t); return t }
 func (b Builtins) Register(r *ToolRegistry) error {
 	add := func(name, description, permission string, schema json.RawMessage, h ToolHandler) error {
-		return r.Register(ToolSpec{Name: name, Description: description, InputSchema: schema, OutputSchema: builtinOutputSchema(name), Permissions: []string{permission}, Timeout: 20 * time.Second}, h)
-	}
-	id := object(map[string]any{"memory_id": str(128)}, "memory_id")
-	memoryFields := map[string]any{"title": str(512), "content": str(65536), "category": str(128), "priority": integer(-100, 100)}
-	if err := add("memory_create", "Create private memory for this agent", "memory.write", object(memoryFields, "title", "content"), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-		return b.Repository.SaveMemory(ctx, e.Scope, decode[Memory](raw), true)
-	}); err != nil {
-		return err
-	}
-	memoryUpdate := map[string]any{}
-	for k, v := range memoryFields {
-		memoryUpdate[k] = v
-	}
-	memoryUpdate["memory_id"] = str(128)
-	if err := add("memory_update", "Replace private memory", "memory.write", object(memoryUpdate, "memory_id", "title", "content"), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-		return b.Repository.SaveMemory(ctx, e.Scope, decode[Memory](raw), false)
-	}); err != nil {
-		return err
-	}
-	if err := add("memory_get", "Read one private memory", "memory.read", id, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-		return b.Repository.GetMemory(ctx, e.Scope, decode[Memory](raw).ID)
-	}); err != nil {
-		return err
-	}
-	if err := add("memory_delete", "Delete private memory", "memory.write", id, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-		err := b.Repository.DeleteMemory(ctx, e.Scope, decode[Memory](raw).ID)
-		return map[string]bool{"deleted": err == nil}, err
-	}); err != nil {
-		return err
-	}
-	for _, name := range []string{"memory_search", "memory_list"} {
-		if err := add(name, "Find private memories ordered by priority, creation time and ID", "memory.read", object(map[string]any{"query": map[string]any{"type": "string", "maxLength": 512}, "limit": integer(1, 100)}), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-			p := decode[struct {
-				Query string `json:"query"`
-				Limit int    `json:"limit"`
-			}](raw)
-			if p.Limit == 0 {
-				p.Limit = 50
-			}
-			return b.Repository.ListMemory(ctx, e.Scope, p.Query, p.Limit)
-		}); err != nil {
-			return err
+		spec := ToolSpec{Name: name, Description: description, InputSchema: schema, OutputSchema: builtinOutputSchema(name), Permissions: []string{permission}, Timeout: 20 * time.Second}
+		if name == "agent_dispatch" {
+			spec.Timeout = 0
+			spec.UseRunTimeout = true
 		}
+		return r.Register(spec, h)
+	}
+	if err := b.registerMemory(add); err != nil {
+		return err
 	}
 	notificationSchema := object(map[string]any{"title": str(256), "body": str(4096), "category": str(128), "related_object": str(256), "idempotency_key": str(256)}, "title", "body", "category")
 	if err := add("notification_send", "Request a notification for the current owner; receipt is not device delivery confirmation", "notification.send", notificationSchema, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
@@ -175,18 +170,7 @@ func (b Builtins) Register(r *ToolRegistry) error {
 	}); err != nil {
 		return err
 	}
-	if err := add("agent_dispatch", "Run another enabled agent of the same owner through the internal bridge", "agent.dispatch", object(map[string]any{"target_agent_id": str(128), "task": str(16384), "context": map[string]any{"type": "object"}}, "target_agent_id", "task"), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-		if b.Dispatcher == nil {
-			return nil, Fail("NOT_IMPLEMENTED", "dispatch bridge is not configured")
-		}
-		p := decode[struct {
-			Target  string          `json:"target_agent_id"`
-			Task    string          `json:"task"`
-			Context json.RawMessage `json:"context"`
-		}](raw)
-		input, _ := json.Marshal(map[string]any{"task": p.Task, "context": p.Context})
-		return b.Dispatcher.Dispatch(ctx, e, RunRequest{AgentID: p.Target, Trigger: AgentDispatch, Input: input})
-	}); err != nil {
+	if err := b.registerDispatch(add); err != nil {
 		return err
 	}
 	return b.registerWorkflows(add)
@@ -195,6 +179,24 @@ func (b Builtins) Register(r *ToolRegistry) error {
 type addTool func(string, string, string, json.RawMessage, ToolHandler) error
 
 func (b Builtins) registerData(add addTool) error {
+	searchSchema := object(map[string]any{
+		"keywords": map[string]any{"type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": str(256)},
+		"datasets": map[string]any{"type": "array", "minItems": 1, "maxItems": 6, "uniqueItems": true, "items": enum("platform_records", "academic_offerings", "academic_items", "schedules", "dws_messages", "dws_attachments")},
+		"cursor":   str(8192), "limit": integer(1, 100),
+	}, "keywords")
+	if err := add("data_search", "Search authorized datasets using OR keywords across course names, titles, bodies, teachers and other safe text fields. No implicit course filter. Use course aliases and related terms; continue next_cursor until has_more=false, inspect coverage, then data_query linked references for details.", "data.read", searchSchema, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
+		service, ok := b.Data.(KeywordSearchService)
+		if !ok {
+			return nil, Fail("NOT_IMPLEMENTED", "keyword data search is not configured")
+		}
+		p := decode[KeywordSearchRequest](raw)
+		if p.Limit == 0 {
+			p.Limit = 50
+		}
+		return service.SearchKeywords(ctx, e.Scope, p)
+	}); err != nil {
+		return err
+	}
 	catalog := func(ctx context.Context, e ExecutionContext) ([]Dataset, error) {
 		if b.Data == nil {
 			return nil, Fail("NOT_IMPLEMENTED", "data service is not configured")
@@ -272,8 +274,35 @@ func (b Builtins) registerData(add addTool) error {
 }
 func (b Builtins) registerWorkflows(add addTool) error {
 	fields := map[string]any{"name": str(256), "description": map[string]any{"type": "string", "maxLength": 4096}, "parent_workflow_id": str(128), "definition": map[string]any{"type": "object"}, "status": map[string]any{"enum": []string{"draft", "active", "archived"}}}
-	if err := add("workflow_create", "Create a private workflow definition without executing it", "workflow.write", object(fields, "name", "definition"), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
-		return b.Repository.SaveWorkflow(ctx, e.Scope, decode[Workflow](raw), true)
+	createFields := map[string]any{}
+	for k, v := range fields {
+		createFields[k] = v
+	}
+	seedFields := memoryInputFields()
+	for _, key := range []string{"visibility", "owner_agent_id", "owner_workflow_id", "parent_memory_id", "status", "valid_from", "valid_until"} {
+		delete(seedFields, key)
+	}
+	seedFields["structured_content"] = map[string]any{"type": "object"}
+	seedFields["source_refs"] = map[string]any{"type": "array", "minItems": 1, "maxItems": 100, "items": map[string]any{"oneOf": []any{str(2048), map[string]any{"type": "object", "minProperties": 1, "maxProperties": 32}}}}
+	var seedSchema map[string]any
+	_ = json.Unmarshal(object(seedFields, "title", "content", "source_refs"), &seedSchema)
+	createFields["initial_private_memories"] = map[string]any{"type": "array", "minItems": 1, "maxItems": MaxWorkflowPrivateMemories, "items": seedSchema}
+	if err := add("workflow_create", "Create a private workflow definition without executing it. Optional initial_private_memories atomically initialize its private course profile; requires memory.write as well as workflow.write. Ownership is server-bound to the new workflow. Source references are required; return profile_initialization.memory_ids as persistence receipts. After an uncertain response reconcile workflow_list/get before retrying.", "workflow.write", object(createFields, "name", "definition"), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
+		p := decode[struct {
+			Workflow
+			InitialPrivateMemories []Memory `json:"initial_private_memories"`
+		}](raw)
+		if len(p.InitialPrivateMemories) == 0 {
+			return b.Repository.SaveWorkflow(ctx, e.Scope, p.Workflow, true)
+		}
+		if !e.Has("memory.write") {
+			return nil, Fail("PERMISSION_DENIED", "initial private memories require memory.write")
+		}
+		repository, ok := b.Repository.(WorkflowProfileRepository)
+		if !ok {
+			return nil, Fail("NOT_IMPLEMENTED", "atomic workflow profile creation is not configured")
+		}
+		return repository.CreateWorkflowWithMemories(ctx, e.Scope, p.Workflow, p.InitialPrivateMemories)
 	}); err != nil {
 		return err
 	}
@@ -300,14 +329,51 @@ func (b Builtins) registerWorkflows(add addTool) error {
 	}); err != nil {
 		return err
 	}
-	return add("workflow_list", "List owned workflow definitions", "workflow.read", object(map[string]any{"limit": integer(1, 100), "after": str(128)}), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
+	return add("workflow_list", "List owned workflow summaries (entity and goal only). Call workflow_get for the full definition before execution or changes.", "workflow.read", object(map[string]any{"limit": integer(1, 100), "after": str(128)}), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
 		p := decode[struct {
 			Limit int    `json:"limit"`
 			After string `json:"after"`
 		}](raw)
 		if p.Limit == 0 {
-			p.Limit = 50
+			p.Limit = 20
 		}
-		return b.Repository.ListWorkflows(ctx, e.Scope.OwnerID, p.Limit, p.After)
+		items, err := b.Repository.ListWorkflows(ctx, e.Scope.OwnerID, p.Limit, p.After)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]Workflow, len(items))
+		for i, w := range items {
+			var definition map[string]json.RawMessage
+			if json.Unmarshal(w.Definition, &definition) != nil {
+				return nil, Fail("INTERNAL_ERROR", "invalid workflow definition")
+			}
+			summary := map[string]any{}
+			var entity map[string]json.RawMessage
+			if json.Unmarshal(definition["entity"], &entity) == nil && entity != nil {
+				identity := map[string]string{}
+				for _, key := range []string{"kind", "id", "name"} {
+					var value string
+					if json.Unmarshal(entity[key], &value) == nil {
+						if key != "id" {
+							value = compactText(value, 128)
+						}
+						identity[key] = value
+					}
+				}
+				summary["entity"] = identity
+			}
+			var goal string
+			if json.Unmarshal(definition["goal"], &goal) == nil {
+				summary["goal"] = compactText(goal, 160)
+			}
+			w.Name = compactText(w.Name, 128)
+			w.Description = compactText(w.Description, 160)
+			w.Definition, err = json.Marshal(summary)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = w
+		}
+		return out, nil
 	})
 }

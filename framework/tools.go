@@ -19,6 +19,8 @@ type ToolSpec struct {
 	OutputSchema json.RawMessage `json:"output_schema"`
 	Permissions  []string        `json:"permissions"`
 	Timeout      time.Duration   `json:"timeout"`
+	// UseRunTimeout allows nested runs to use the remaining run budget.
+	UseRunTimeout bool `json:"use_run_timeout,omitempty"`
 }
 type ToolResult struct {
 	OK    bool   `json:"ok"`
@@ -135,16 +137,28 @@ func (r *ToolRegistry) Execute(ctx context.Context, e ExecutionContext, name str
 		return fail(Fail("INVALID_ARGUMENT", "invalid JSON arguments"))
 	}
 	if err := t.input.Validate(input); err != nil {
-		return fail(Fail("INVALID_ARGUMENT", "arguments do not match tool schema"))
+		return fail(Fail("INVALID_ARGUMENT", inputSchemaError(err, t.spec.InputSchema)))
 	}
 	timeout := e.Limits.ToolTimeout
-	if t.spec.Timeout > 0 && t.spec.Timeout < timeout {
+	if t.spec.UseRunTimeout {
+		timeout = e.Limits.RunTimeout
+	}
+	if t.spec.Timeout > 0 && (timeout <= 0 || t.spec.Timeout < timeout) {
 		timeout = t.spec.Timeout
 	}
-	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	// Nested agents inherit the remaining parent context. Unlimited runs must not
+	// become an immediate zero-duration deadline or fall back to ToolTimeout.
+	callCtx, cancel := context.WithCancel(ctx)
+	if timeout > 0 {
+		cancel()
+		callCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
 	defer cancel()
 	data, err := t.handler(callCtx, e, args)
 	if err != nil {
+		if callCtx.Err() == context.DeadlineExceeded {
+			return fail(Fail("TIMEOUT", fmt.Sprintf("tool %s exceeded its %s deadline", name, timeout)))
+		}
 		return fail(err)
 	}
 	if err = callCtx.Err(); err != nil {
@@ -153,6 +167,15 @@ func (r *ToolRegistry) Execute(ctx context.Context, e ExecutionContext, name str
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return fail(err)
+	}
+	if len(raw) > e.Limits.ToolResultBytes && name == "agent_dispatch" {
+		if compact, ok := compactDispatchData(data, e.Limits.ToolResultBytes); ok {
+			data = compact
+			raw, err = json.Marshal(data)
+			if err != nil {
+				return fail(err)
+			}
+		}
 	}
 	if len(raw) > e.Limits.ToolResultBytes {
 		return fail(Fail("EXECUTION_LIMIT_EXCEEDED", "tool result exceeds budget"))

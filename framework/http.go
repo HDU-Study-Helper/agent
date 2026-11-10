@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -18,6 +19,10 @@ type HTTPConfig struct {
 	APIKey  string
 	Timeout time.Duration
 	Client  *http.Client
+	// Model-only request policy; search providers retain their own retry policy.
+	MaxConcurrent int
+	Retries       int
+	RetryBackoff  time.Duration
 }
 
 func newHTTP(c HTTPConfig) (*http.Client, string, error) {
@@ -58,7 +63,7 @@ func postJSON(ctx context.Context, client *http.Client, endpoint, key string, in
 		}
 		var networkError net.Error
 		if errors.As(err, &networkError) && networkError.Timeout() {
-			return Fail("TIMEOUT", "provider request timed out")
+			return &Error{Code: "TIMEOUT", Message: "provider request timed out", Retryable: true}
 		}
 		return &Error{Code: "PROVIDER_ERROR", Message: "provider connection failed", Retryable: true}
 	}
@@ -67,10 +72,20 @@ func postJSON(ctx context.Context, client *http.Client, endpoint, key string, in
 		if res.StatusCode == 429 {
 			return &Error{Code: "RATE_LIMITED", Message: "provider rate limit exceeded", Retryable: true}
 		}
-		return &Error{Code: "PROVIDER_ERROR", Message: "provider request rejected", Retryable: res.StatusCode == 408 || res.StatusCode >= 500}
+		return &Error{Code: "PROVIDER_ERROR", Message: fmt.Sprintf("provider request rejected (HTTP %d)", res.StatusCode), Retryable: res.StatusCode == 408 || res.StatusCode >= 500}
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, (8<<20)+1))
-	if err != nil || len(raw) > 8<<20 {
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var networkError net.Error
+		if errors.As(err, &networkError) && networkError.Timeout() {
+			return &Error{Code: "TIMEOUT", Message: "provider response body timed out", Retryable: true}
+		}
+		return Fail("PROVIDER_ERROR", "provider response could not be read")
+	}
+	if len(raw) > 8<<20 {
 		return Fail("PROVIDER_ERROR", "invalid or oversized provider response")
 	}
 	if err = json.Unmarshal(raw, output); err != nil {
@@ -81,16 +96,31 @@ func postJSON(ctx context.Context, client *http.Client, endpoint, key string, in
 
 // OpenAIProvider translates domain messages to Chat Completions; no SDK types escape it.
 type OpenAIProvider struct {
-	client    *http.Client
-	base, key string
+	client                 *http.Client
+	base, key              string
+	gate                   *modelGate
+	maxConcurrent, retries int
+	backoff                time.Duration
 }
 
 func NewOpenAIProvider(c HTTPConfig) (*OpenAIProvider, error) {
+	if c.Timeout <= 0 {
+		c.Timeout = 10 * time.Minute
+	}
+	if c.MaxConcurrent <= 0 {
+		c.MaxConcurrent = 2
+	}
+	if c.Retries < 0 || c.Retries > 5 || c.MaxConcurrent > 32 {
+		return nil, Fail("INVALID_ARGUMENT", "invalid model request policy")
+	}
+	if c.RetryBackoff <= 0 {
+		c.RetryBackoff = time.Second
+	}
 	client, base, err := newHTTP(c)
 	if err != nil {
 		return nil, err
 	}
-	return &OpenAIProvider{client, base, c.APIKey}, nil
+	return &OpenAIProvider{client: client, base: base, key: c.APIKey, gate: sharedModelGate(base, c.APIKey), maxConcurrent: c.MaxConcurrent, retries: c.Retries, backoff: c.RetryBackoff}, nil
 }
 func (p *OpenAIProvider) Complete(ctx context.Context, r ModelRequest) (ModelResponse, error) {
 	payload := map[string]any{"model": r.Config.Model, "messages": r.Messages, "stream": false}
@@ -132,13 +162,24 @@ func (p *OpenAIProvider) Complete(ctx context.Context, r ModelRequest) (ModelRes
 		} `json:"choices"`
 		Usage Usage `json:"usage"`
 	}
-	if err := postJSON(ctx, p.client, p.base+"/chat/completions", p.key, payload, &response); err != nil {
+	if err := p.request(ctx, payload, &response); err != nil {
 		return ModelResponse{}, err
 	}
 	if len(response.Choices) != 1 {
 		return ModelResponse{}, Fail("PROVIDER_ERROR", "provider returned no unique choice")
 	}
 	choice := response.Choices[0]
+	// Some compatible gateways omit role on a complete assistant message.
+	// Accept that omission only when the message actually contains a response.
+	if choice.Message.Role == "" && (choice.Message.Content != nil || len(choice.Message.ToolCalls) > 0) {
+		choice.Message.Role = "assistant"
+	}
+	if choice.Message.Role != "assistant" {
+		if choice.Message.Role == "" {
+			return ModelResponse{}, Fail("PROVIDER_ERROR", "provider returned an empty assistant message")
+		}
+		return ModelResponse{}, Fail("PROVIDER_ERROR", "provider returned a non-assistant message role")
+	}
 	message := Message{Role: choice.Message.Role, ToolCalls: choice.Message.ToolCalls}
 	if choice.Message.Content != nil {
 		message.Content = *choice.Message.Content

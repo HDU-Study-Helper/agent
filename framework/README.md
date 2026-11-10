@@ -2,7 +2,9 @@
 
 通用 Go Agent Framework，主体位于 `agent/framework`。不包含 Filter、Worker、Learner 业务实现、HTTP 路由或 Workflow 执行引擎。框架作为独立 Go module，通过接口接入现有后端；`backend/internal/agent` 适配已有 `bridge.Port`，全部 PostgreSQL 访问仍由 `backend/internal/dbbridge` 实现。
 
-本阶段已实现实例配置 CRUD、受限多轮 Tool Calling、18 个内置工具、每 Agent 私有记忆、同步跨 Agent 调度、Workflow 定义和版本持久化，以及 OpenAI 兼容模型和 DeepSeek Search / Fetch 适配。后端 HTTP App 尚未自动装配框架；由可信内部调用方显式构造服务。
+Worker统一调用仍使用 `agent_dispatch`，支持经校验的Workflow选择、可信子上下文、版本快照及Run审计；输入与兼容性见 [DISPATCH.md](DISPATCH.md)。
+
+本阶段已实现实例配置 CRUD、受限多轮 Tool Calling、21 个内置工具、用户 PUB / Agent PRI / Workflow PRI 记忆、同步跨 Agent 调度、Workflow 定义和版本持久化，以及 OpenAI 兼容模型和 DeepSeek Search / Fetch 适配。后端已在 App 启动时装配框架，并提供 `/admin/agents` 临时管理页；管理 HTTP 位于独立的 backend/internal/agentadmin，框架核心仍只提供内部 Go 接口。
 
 架构图见 [architecture.mermaid](architecture.mermaid)，完整工具输入与输出 JSON Schema 见 [tool-catalog.json](tool-catalog.json)，验证记录见 [VALIDATION.md](VALIDATION.md)，新增和修改文件清单见 [CHANGES.md](CHANGES.md)。
 
@@ -19,13 +21,15 @@ flowchart LR
     Repository --> DB[现有 dbbridge → PostgreSQL]
 ```
 
+Memory V0.2 的迁移、归属权限、全部记忆工具 JSON Schema、Workflow 上下文和验收见 [MEMORY-V0.2.md](MEMORY-V0.2.md)。
+
 ## Runtime 执行链路
 
 1. 调用 `Run(ctx, trustedOwnerID, RunRequest)`；OwnerID 来自已认证后端上下文，不能取自模型参数。
 2. 按 OwnerID + AgentID 读取实例并验证用户未禁用、Agent 启用，绑定可信 ExecutionContext。
 3. 创建并持久化 running 记录，检查实例与进程并发数，设置本次运行 deadline。
-4. 加载该 Agent 记忆，按 priority DESC、created_at ASC、memory_id ASC 排序；最多选择 1000 条候选，在 MemoryBytes 预算内挑选完整记录。超限记录不注入，不修改数据库。
-5. 注入系统提示词、明确标记为不可信数据的私有记忆，以及 Trigger + JSON Input。根据服务端配置筛选工具。
+4. 加载当前用户 PUB、当前 Agent PRI 和可信 Workflow PRI 的当前有效记忆，按 priority DESC、created_at ASC、memory_id ASC 排序；最多选择 1000 条候选，在 MemoryBytes 预算内挑选完整记录。超限记录不注入，不修改数据库。
+5. 注入系统提示词、明确标记为不可信数据的授权记忆，以及 Trigger + JSON Input。根据服务端配置筛选工具。
 6. 检查消息与工具 Schema 的 ContextBytes 预算，调用所选 ModelProvider，累计 Token Usage。
 7. 校验 Tool Call 类型和 ID；一轮可包含多个 Tool Call，按顺序执行，每个结果对应原始 tool_call_id。
 8. 执行前再次检查工具授权、JSON Schema、执行预算和超时；执行后检查输出 Schema 与结果长度，将统一结果信封回传模型。
@@ -35,6 +39,10 @@ flowchart LR
 `agent_type` 只是描述性字段。Runtime 不对角色作硬编码分支。Provider、工具、Agent 数量均可扩展。消息历史当前仅在一次 Run 内维护，不保存聊天正文或原始工具参数；跨 Run 长期上下文来自持久化 Memory。
 
 默认限制：8 次模型调用、32 次工具调用、4 层调度、128 KiB 上下文、16 KiB 记忆、32 KiB 单工具输出、2 分钟单 Run、20 秒单工具、每 Agent 同时 4 个 Run。Runtime 默认进程总并发 64，可由宿主在启动时调整。同步子调用无等待队列，满额时返回 RATE_LIMITED，避免父等待子造成死锁。父子运行共享模型和工具调用预算及父级取消上下文；子 Agent 同时遵守自己的限制。超时通过 Go context 传递，注入的自定义 Provider/工具必须遵守取消契约。
+
+显式 `limits.unlimited=true` 时，model_calls/tool_calls/run_timeout归零，表示不按次数或总时长截断；未设置该标记的旧配置保持以上默认语义。父子仍共享根预算：根不限则共享预算不限，子仍遵守自身正数限制；取消、调度循环/深度、上下文/输出字节约束保留。`agent_dispatch` 使用父运行上下文，Unlimited模式不会被零时长或普通20秒工具超时打断。
+
+模型HTTP请求独立于Agent并发：同endpoint+密钥的Provider实例共享进程内并发门，默认2个请求；等待支持context取消，不占用请求超时。模型请求默认600秒，宿主可配置1–600秒、1–32并发及0–5次重试。仅timeout/429/408/5xx/连接故障重试，指数退避最大30秒，重试不执行工具；模型工具调用只有完整响应返回后才执行。运行观察状态包括`model_wait`、`model_retry`及`model`，日志仅记录重试次数、错误码和退避，不记录URL/Key/消息。Workflow列表只返回entity的kind/id/name及短goal摘要，不回传entity内的source_evidence等嵌套快照；默认20条、显式limit仍最多100，执行或修改前用workflow_get取完整定义。若成功子Agent输出超过父工具字节预算，agent_dispatch返回明确标记truncated/full_output_run_id的摘要，保留状态、Workflow身份和可容纳的成果/证据引用；完整输出仍由宿主Observer/运行存储保存，不重执行子任务，不将省略内容冒充完整证据。
 
 ContextBytes 是确定性的序列化字节预算，不是模型精确 Token 估算。模型返回的 Usage 如有提供会记录；不会杜撰 Token 统计。结束错误包含 code、message、retryable，支持任务列出的全部错误码。
 
@@ -58,9 +66,9 @@ err := service.Tools.Register(framework.ToolSpec{
 
 | 能力 | 工具 | 权限 | 主要输入 |
 |---|---|---|---|
-| 私有记忆 | memory_create / get / search / list / update / delete | memory.read / memory.write | title、content、category、priority；memory_id；query、limit |
+| 记忆 V0.2 | memory_create / get / search / list / update / delete / create_relation / get_relations | memory.read / memory.write | PUB / Agent PRI / Workflow PRI；类型、PERSONAL、层级、有效期、证据和直接关联；完整 Schema 见 Memory V0.2 文档 |
 | 通知请求 | notification_send | notification.send | title、body、category、related_object?、idempotency_key? |
-| 数据发现与查询 | data_list_tables / data_describe_table / data_query | data.read | dataset、fields、filters、limit、offset |
+| 数据发现与查询 | data_list_tables / data_describe_table / data_query / data_search | data.read | dataset、fields、filters、limit、offset；keywords、datasets、cursor |
 | 公网信息 | web_search / web_fetch | web.search / web.fetch | query、count；url |
 | Agent 调度 | agent_dispatch | agent.dispatch | target_agent_id、task、context? |
 | Workflow 定义 | workflow_create / list / get / update / delete | workflow.read / write / delete | name、description、definition、status、parent_workflow_id?；workflow_id、version |
@@ -82,11 +90,23 @@ go run ./cmd/tool-catalog > tool-catalog.json
 {"ok":false,"data":null,"error":{"code":"PERMISSION_DENIED","message":"tool is not authorized","retryable":false}}
 ```
 
-Memory 工具的 user/agent 归属完全取自 Runtime。`memory_update` 是整条替换。所有 Run 都自动加载该 Agent 记忆，不要求模型先调用 memory_get。
+Memory 工具的 user/agent 归属完全取自 Runtime。`memory_update` 是整条替换。所有 Run 都自动加载当前用户 PUB、当前 Agent PRI 和可信 Workflow PRI 的当前有效记忆，不要求模型先调用 memory_get。
 
 Data Query 采用结构化查询，只接受 eq/ne/lt/lte/gt/gte/contains，工具默认返回 20 行、最多 100 行、offset 最多 10000。白名单字段与过滤字段都要验证。后端默认只开放 `platform_records` 的安全投影：id、connection_id、source、kind、external_id、parent_id、title、text；不会暴露完整 content、会话、凭据、记忆或系统表。SQL 由 dbbridge 根据固定表达式生成，参数绑定、只读事务、5 秒 statement_timeout；范围限制为当前用户仍启用且 active 的平台连接。当前没有跨用户公共课程数据集；新增此类数据集必须在 DataService 实现课程归属检查。
 
 通知只代表后端接受请求，返回 NotificationReceipt；幂等键原样交给后端通知模块。持久化、去重、用户偏好、静默时间和设备交付由后端服务负责。缺少实现时返回 NOT_IMPLEMENTED；演示使用 Mock，不能视为真实推送验证。
+
+## 跨数据集调查与 Workflow 私有画像初始化
+
+`data_search` 使用 `data.read` 权限，通过可选 `KeywordSearchService` 执行多关键词 OR 查询。一次接受 1–20 个关键词，每词最多 256 字符；可选择 platform_records、academic_offerings、academic_items、schedules、dws_messages、dws_attachments 六个数据集。结果包含带 dataset 的 hits、各数据集 coverage、has_more 和 next_cursor。模型应继续游标直至 has_more=false，再用 data_query 获取关联记录；搜索不会隐式增加课程过滤。data_query 也返回 has_more，存在后续页时提供 next_offset。宿主没有实现搜索能力时明确返回 NOT_IMPLEMENTED。
+
+`workflow_create` 可选 `initial_private_memories`，在创建 Workflow 时直接初始化其私有画像。普通创建参数及返回字段保持兼容，workflow_update 不接受该参数。初始记忆接受 title、content、分类及结构化内容等字段，source_refs 必须提供 1–100 个非空字符串或对象；模型不能指定用户、Agent、Workflow、记忆 ID、父记忆或有效期。单次最多 256 条且序列化总量不超过 1 MiB，仍遵守运行输入预算；这些限制约束资源使用，不规定画像事实数量。
+
+宿主通过可选 `WorkflowProfileRepository.CreateWorkflowWithMemories` 实现单事务写入 Workflow、版本快照与全部记忆。dbbridge 会锁定并读取当前 Agent 配置，要求实例启用、授权 workflow_create，且同时具有 workflow.write 和 memory.write。私有记忆的 owner_workflow_id 取自服务器新建 ID，visibility 固定为 PRI；不会改变调用者 Scope，也不会放宽普通 memory_create 的权限。未绑定 Workflow 的 Learner 之后仍不能直接读取或修改这些 Workflow PRI 记忆；绑定同一 Workflow 的 Worker 可以读取。
+
+成功结果保留顶层 workflow_id 等字段，并增加 profile_initialization：memory_ids、count、visibility、owner_workflow_id、verified:true、content_sha256。哈希覆盖按输入顺序排列的数据库返回记忆行的规范 JSON，保留精确 JSON 数字；只有事务提交成功才返回 verified receipt。Run 工具审计保存 WORKFLOW 和 MEMORY 引用，不保存画像正文。课程维度完整性由宿主业务校验与 definition.profile_manifest 约定处理，通用工具不强制固定课程分类。
+
+当前未提供请求幂等键。active Workflow 沿用同实体同名或同目标冲突保护；创建响应不确定时，应先 workflow_list/get 核查，不能自动重试并假定不会重复创建。原子回滚、权限和私有隔离的 PostgreSQL 测试位于 [workflow_profile_test.go](../../backend/internal/dbbridge/workflow_profile_test.go)，需要显式专用 TEST_DATABASE_URL；框架权限、Schema 与 receipt 测试不连接数据库。
 
 ## Bridge 集成及内部调用示例
 
@@ -133,19 +153,19 @@ B 完成后，A 得到 `data: {run_id, output, error:null}`，再继续自己的
 
 ## PostgreSQL 表与迁移
 
-迁移由现有 `dbbridge.Migrate` 执行，新增 v5，沿用原事务 advisory lock 和 `dbbridge_migrations`；不修改 v1–v4。Open 本身不会迁移。以下五张表均有用户外键或复合归属外键：
+初版表由 v5 迁移创建，本版由现有 `dbbridge.Migrate` 执行 V9 记忆迁移，沿用原事务 advisory lock 和 `dbbridge_migrations`；不修改 v1–v4。Open 本身不会迁移。以下表均有用户外键或复合归属外键：
 
 | 表 | 主要列 / 约束 |
 |---|---|
 | agent_instances | agent_id 全局主键；owner_user_id；config JSONB；status；时间；owner/agent 唯一键 |
-| agent_memories | memory_id 主键；owner/agent 复合外键；title/content/category/priority；时间；确定性加载索引 |
+| memories / memory_relations | V9 新增；统一三种归属、属性、层级、有效期与直接关联，旧 agent_memories 保留为迁移存档；详见 Memory V0.2 文档 |
 | agent_workflows | workflow_id 主键；owner；name/description；parent；definition JSONB object；version/status；created_by；时间；同 owner 父子外键 |
 | agent_workflow_versions | owner/workflow/version 复合主键；完整 snapshot JSONB；随定义删除 |
 | agent_runs | run_id 主键；owner/agent；parent_run_id 同 owner 外键；record JSONB；status；开始结束时间；检索索引 |
 
 Workflow 创建和每次修改，定义与不可变版本快照在同一事务提交；更新必须提交当前 version，冲突返回 INVALID_ARGUMENT。创建者不能被更新者覆盖。同用户的 Agent 可管理该用户 Workflow，跨用户不可访问。父 Workflow 创建后不可更换，阻断重挂形成环；一个 Sub-Workflow 只有一个父节点。含子定义的父 Workflow 不可直接删除。树写操作按 owner advisory lock 串行化。
 
-宿主更新后须显式执行 Migrate。v5 为新增表，无现有业务数据回填；部署前保留常规数据库备份流程。当前版本拒绝高于 v5 的迁移账本，防止旧代码误用新版 schema。
+宿主更新后须显式执行 Migrate（现有 App 启动已调用）。v5 为新增表，无现有业务数据回填；部署前保留常规数据库备份流程。后续管理页新增 v6 加密配置表，当前后端拒绝高于 v9 的迁移账本，防止旧代码误用新版 schema。
 
 ## 测试与后续入口
 
@@ -174,3 +194,7 @@ TEST_DATABASE_URL='postgres://.../dedicated_test_db' go test ./internal/dbbridge
 - 新增 Provider 实现 ModelProvider；替换搜索实现 SearchProvider；自定义数据集实现 DataService；通知实现 NotificationService；持久化扩展实现 Repository。
 
 实现参考：[OpenAI Chat Completions 官方协议](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[DeepSeek Search / Fetch 指南](https://api-docs.deepseek.com/zh-cn/guides/search)、[Search Schema](https://api-docs.deepseek.com/zh-cn/api/search.md)、[Fetch Schema](https://api-docs.deepseek.com/zh-cn/api/fetch.md)。
+
+## 临时后台管理入口
+
+最新后端启动已装配框架。`/admin/agents` 支持框架 API 配置、智能体创建修改、结构化记忆和手动运行，完整说明见 [Agent 管理后台](../../backend/internal/agentadmin/README.md)。管理 API 由后端层提供；具体业务 Agent、自动事件触发和 Workflow 引擎仍不在实现范围。宿主可用可选 `ModelProviderResolver` 为后续运行解析最新命名 Provider，不需要修改正在执行的工具循环。

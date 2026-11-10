@@ -1,0 +1,1193 @@
+[
+  {
+    "name": "memory_create",
+    "description": "Create PUB, own Agent PRI or current Workflow PRI memory. Prefer PRI for unverified inferences; never choose another user. Omitted classification defaults to own PRI, BASE, L1, active.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 128,
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "type": "string"
+        },
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "maxLength": 128,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_workflow_id": {
+          "maxLength": 128,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_memory_id": {
+          "maxLength": 128,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "maximum": 100,
+          "minimum": -100,
+          "type": "integer"
+        },
+        "source_refs": {
+          "maxItems": 100,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid"
+          ],
+          "type": "string"
+        },
+        "structured_content": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "content"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "owner_workflow_id": {
+          "type": "string"
+        },
+        "parent_memory_id": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "source_refs": {
+          "items": {},
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid"
+          ],
+          "type": "string"
+        },
+        "structured_content": {
+          "type": "object"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "owner_user_id",
+        "visibility",
+        "memory_type",
+        "is_personal",
+        "level",
+        "title",
+        "content",
+        "status",
+        "category",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_create_relation",
+    "description": "Link two accessible memories; does not grant access to either endpoint. Duplicate directed relations are rejected.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 4096,
+          "type": "string"
+        },
+        "relation_type": {
+          "enum": [
+            "RELATED_TO",
+            "ALIAS_OF",
+            "BELONGS_TO",
+            "DERIVED_FROM",
+            "ROUTES_TO",
+            "SUPERSEDES"
+          ],
+          "type": "string"
+        },
+        "source_memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "target_memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_memory_id",
+        "target_memory_id",
+        "relation_type"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "created_by_agent_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "relation_id": {
+          "type": "string"
+        },
+        "relation_type": {
+          "enum": [
+            "RELATED_TO",
+            "ALIAS_OF",
+            "BELONGS_TO",
+            "DERIVED_FROM",
+            "ROUTES_TO",
+            "SUPERSEDES"
+          ],
+          "type": "string"
+        },
+        "source_memory_id": {
+          "type": "string"
+        },
+        "target_memory_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "relation_id",
+        "owner_user_id",
+        "source_memory_id",
+        "target_memory_id",
+        "relation_type",
+        "description",
+        "created_by_agent_id",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_delete",
+    "description": "Delete accessible memory, cascade semantic relations and detach children.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "const": true
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_get",
+    "description": "Read accessible memory details. Check status and validity before treating it as a current fact.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "owner_workflow_id": {
+          "type": "string"
+        },
+        "parent_memory_id": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "source_refs": {
+          "items": {},
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid"
+          ],
+          "type": "string"
+        },
+        "structured_content": {
+          "type": "object"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "owner_user_id",
+        "visibility",
+        "memory_type",
+        "is_personal",
+        "level",
+        "title",
+        "content",
+        "status",
+        "category",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_get_relations",
+    "description": "Find direct relations with both endpoints accessible; get returned memory IDs to expand context. Only depth 1 is supported.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "depth": {
+          "maximum": 1,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "direction": {
+          "enum": [
+            "incoming",
+            "outgoing",
+            "both"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "relation_type": {
+          "enum": [
+            "RELATED_TO",
+            "ALIAS_OF",
+            "BELONGS_TO",
+            "DERIVED_FROM",
+            "ROUTES_TO",
+            "SUPERSEDES"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by_agent_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "relation_id": {
+            "type": "string"
+          },
+          "relation_type": {
+            "enum": [
+              "RELATED_TO",
+              "ALIAS_OF",
+              "BELONGS_TO",
+              "DERIVED_FROM",
+              "ROUTES_TO",
+              "SUPERSEDES"
+            ],
+            "type": "string"
+          },
+          "source_memory_id": {
+            "type": "string"
+          },
+          "target_memory_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation_id",
+          "owner_user_id",
+          "source_memory_id",
+          "target_memory_id",
+          "relation_type",
+          "description",
+          "created_by_agent_id",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_list",
+    "description": "Search authorized PUB, own Agent PRI and current Workflow PRI. Defaults: active and currently valid, limit 50. Retrieve historical records explicitly with validity/status. Search when evidence is insufficient rather than guessing.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "owner_workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent_memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid",
+            "all"
+          ],
+          "type": "string"
+        },
+        "validity": {
+          "enum": [
+            "current",
+            "expired",
+            "future",
+            "all"
+          ],
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_personal": {
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "L0",
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "memory_type": {
+            "enum": [
+              "BASE",
+              "TEMP"
+            ],
+            "type": "string"
+          },
+          "owner_agent_id": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "owner_workflow_id": {
+            "type": "string"
+          },
+          "parent_memory_id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "source_refs": {
+            "items": {},
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived",
+              "invalid"
+            ],
+            "type": "string"
+          },
+          "structured_content": {
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "PUB",
+              "PRI"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "owner_user_id",
+          "visibility",
+          "memory_type",
+          "is_personal",
+          "level",
+          "title",
+          "content",
+          "status",
+          "category",
+          "priority",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_search",
+    "description": "Search authorized PUB, own Agent PRI and current Workflow PRI. Defaults: active and currently valid, limit 50. Retrieve historical records explicitly with validity/status. Search when evidence is insufficient rather than guessing.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "owner_workflow_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "parent_memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 512,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid",
+            "all"
+          ],
+          "type": "string"
+        },
+        "validity": {
+          "enum": [
+            "current",
+            "expired",
+            "future",
+            "all"
+          ],
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "output_schema": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_personal": {
+            "type": "boolean"
+          },
+          "level": {
+            "enum": [
+              "L0",
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "memory_type": {
+            "enum": [
+              "BASE",
+              "TEMP"
+            ],
+            "type": "string"
+          },
+          "owner_agent_id": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "owner_workflow_id": {
+            "type": "string"
+          },
+          "parent_memory_id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "source_refs": {
+            "items": {},
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived",
+              "invalid"
+            ],
+            "type": "string"
+          },
+          "structured_content": {
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "PUB",
+              "PRI"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "owner_user_id",
+          "visibility",
+          "memory_type",
+          "is_personal",
+          "level",
+          "title",
+          "content",
+          "status",
+          "category",
+          "priority",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "permissions": [
+      "memory.read"
+    ],
+    "timeout": 20000000000
+  },
+  {
+    "name": "memory_update",
+    "description": "Patch accessible memory; ownership changes recheck old and new scope. Clear old owner with null when moving to PUB or another allowed scope.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "maxLength": 128,
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "type": "string"
+        },
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "memory_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "maxLength": 128,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_workflow_id": {
+          "maxLength": 128,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_memory_id": {
+          "maxLength": 128,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "maximum": 100,
+          "minimum": -100,
+          "type": "integer"
+        },
+        "source_refs": {
+          "maxItems": 100,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid"
+          ],
+          "type": "string"
+        },
+        "structured_content": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "title": {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id"
+      ],
+      "type": "object"
+    },
+    "output_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "is_personal": {
+          "type": "boolean"
+        },
+        "level": {
+          "enum": [
+            "L0",
+            "L1",
+            "L2",
+            "L3"
+          ],
+          "type": "string"
+        },
+        "memory_id": {
+          "type": "string"
+        },
+        "memory_type": {
+          "enum": [
+            "BASE",
+            "TEMP"
+          ],
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "type": "string"
+        },
+        "owner_user_id": {
+          "type": "string"
+        },
+        "owner_workflow_id": {
+          "type": "string"
+        },
+        "parent_memory_id": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "source_refs": {
+          "items": {},
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "archived",
+            "invalid"
+          ],
+          "type": "string"
+        },
+        "structured_content": {
+          "type": "object"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valid_from": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "visibility": {
+          "enum": [
+            "PUB",
+            "PRI"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_id",
+        "owner_user_id",
+        "visibility",
+        "memory_type",
+        "is_personal",
+        "level",
+        "title",
+        "content",
+        "status",
+        "category",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "permissions": [
+      "memory.write"
+    ],
+    "timeout": 20000000000
+  }
+]

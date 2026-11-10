@@ -71,6 +71,42 @@ func requireCode(t *testing.T, err error, code string) {
 		t.Fatalf("want %s, got %v", code, err)
 	}
 }
+
+type configResolver struct {
+	model    string
+	provider ModelProvider
+}
+
+func (r *configResolver) ResolveProvider(string) ModelProvider { return r.provider }
+func (r *configResolver) ResolveModel(config ModelConfig) (ModelProvider, ModelConfig, error) {
+	if config.Mode == "default" {
+		config.Model = r.model
+	}
+	return r.provider, config, nil
+}
+func TestRuntimeResolvesDefaultModelForEveryNewRun(t *testing.T) {
+	repo := newFakeRepo()
+	a := fixtureAgent("a")
+	a.Model.Mode = "default"
+	repo.agents[a.ID] = a
+	var seen []string
+	resolver := &configResolver{model: "old", provider: modelFunc(func(_ context.Context, r ModelRequest) (ModelResponse, error) {
+		seen = append(seen, r.Config.Model)
+		return final("ok"), nil
+	})}
+	runtime := NewRuntime(repo, NewToolRegistry(), nil)
+	runtime.Resolver = resolver
+	for _, model := range []string{"old", "new"} {
+		resolver.model = model
+		if _, err := runtime.Run(context.Background(), "owner", RunRequest{AgentID: "a", Trigger: UserMessage, Input: json.RawMessage(`{}`)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Join(seen, ",") != "old,new" {
+		t.Fatal("stale model", seen)
+	}
+}
+
 func TestRuntimeMultiCallAndAutomaticIsolatedMemory(t *testing.T) {
 	repo := newFakeRepo()
 	a := fixtureAgent("a")
@@ -196,7 +232,7 @@ func TestToolSchemaPermissionTimeoutAndPanic(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	e := ExecutionContext{Scope: Scope{"owner", "a"}, EnabledTools: []string{"restricted"}, Limits: Limits{}.Defaults(), budget: &budget{tools: 10}}
+	e := ExecutionContext{Scope: Scope{OwnerID: "owner", AgentID: "a"}, EnabledTools: []string{"restricted"}, Limits: Limits{}.Defaults(), budget: &budget{tools: 10}}
 	result := r.Execute(context.Background(), e, "restricted", json.RawMessage(`{"value":1}`))
 	if result.Error.Code != "PERMISSION_DENIED" {
 		t.Fatal(result)
@@ -238,7 +274,7 @@ func TestToolSchemaPermissionTimeoutAndPanic(t *testing.T) {
 func TestMemorySelectionPreservesDatabase(t *testing.T) {
 	repo := newFakeRepo()
 	repo.memories = []Memory{{ID: "large", OwnerID: "owner", AgentID: "a", Content: strings.Repeat("x", 2000)}, {ID: "small", OwnerID: "owner", AgentID: "a", Content: "kept"}}
-	text, err := LoadMemories(context.Background(), repo, Scope{"owner", "a"}, 500)
+	text, err := LoadMemories(context.Background(), repo, Scope{OwnerID: "owner", AgentID: "a"}, 500)
 	if err != nil || !strings.Contains(text, "kept") || strings.Contains(text, "large") || len(repo.memories) != 2 {
 		t.Fatalf("budget selection: %q %v", text, err)
 	}
@@ -248,7 +284,7 @@ func TestDispatchCycleAndDepth(t *testing.T) {
 	repo.agents["a"] = fixtureAgent("a")
 	repo.agents["b"] = fixtureAgent("b")
 	r := NewRuntime(repo, NewToolRegistry(), map[string]ModelProvider{})
-	parent := ExecutionContext{Scope: Scope{"owner", "a"}, RunID: "parent", Permissions: []string{"agent.dispatch"}, Limits: Limits{DispatchDepth: 1}, ancestry: []string{"a"}, budget: &budget{models: 1, tools: 1}}
+	parent := ExecutionContext{Scope: Scope{OwnerID: "owner", AgentID: "a"}, RunID: "parent", Permissions: []string{"agent.dispatch"}, Limits: Limits{DispatchDepth: 1}, ancestry: []string{"a"}, budget: &budget{models: 1, tools: 1}}
 	_, err := r.Run(DispatchContext(context.Background(), parent), "owner", RunRequest{AgentID: "a", Trigger: AgentDispatch, Input: json.RawMessage(`{}`)})
 	requireCode(t, err, "EXECUTION_LIMIT_EXCEEDED")
 	parent.ancestry = []string{"x", "a"}
@@ -283,5 +319,69 @@ func TestRuntimeConcurrencyDoesNotDeadlock(t *testing.T) {
 	close(release)
 	if err = <-first; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRunDeadlineDiagnosticsAndCancellation(t *testing.T) {
+	repo := newFakeRepo()
+	a := fixtureAgent("a")
+	a.Limits.RunTimeout = 10 * time.Millisecond
+	repo.agents[a.ID] = a
+	runtime := NewRuntime(repo, NewToolRegistry(), map[string]ModelProvider{"mock": modelFunc(func(ctx context.Context, _ ModelRequest) (ModelResponse, error) {
+		<-ctx.Done()
+		return ModelResponse{}, ctx.Err()
+	})})
+	result, err := runtime.Run(context.Background(), "owner", RunRequest{AgentID: "a", Trigger: UserMessage, Input: json.RawMessage(`{}`)})
+	requireCode(t, err, "TIMEOUT")
+	if result.RunID == "" || !strings.Contains(SafeError(err).Message, "model call 1") || repo.runs[result.RunID].Status != "failed" {
+		t.Fatalf("missing diagnostic: %+v %v", result, err)
+	}
+	requireCode(t, context.Canceled, "CANCELLED")
+}
+
+func TestNestedToolUsesRunBudget(t *testing.T) {
+	registry := NewToolRegistry()
+	handler := func(ctx context.Context, _ ExecutionContext, _ json.RawMessage) (any, error) {
+		select {
+		case <-time.After(40 * time.Millisecond):
+			return "done", nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	for _, runBudget := range []bool{false, true} {
+		name := "ordinary"
+		if runBudget {
+			name = "nested"
+		}
+		if err := registry.Register(ToolSpec{Name: name, Description: "test deadline policy", InputSchema: json.RawMessage(`{"type":"object"}`), OutputSchema: json.RawMessage(`{"type":"string"}`), UseRunTimeout: runBudget}, handler); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := toolContext([]string{"ordinary", "nested"}, nil)
+	e.Limits.ToolTimeout = 5 * time.Millisecond
+	e.Limits.RunTimeout = time.Second
+	first := registry.Execute(context.Background(), e, "ordinary", json.RawMessage(`{}`))
+	if first.Error == nil || first.Error.Code != "TIMEOUT" || !strings.Contains(first.Error.Message, "ordinary") {
+		t.Fatalf("ordinary: %+v", first)
+	}
+	second := registry.Execute(context.Background(), e, "nested", json.RawMessage(`{}`))
+	if !second.OK {
+		t.Fatalf("nested: %+v", second)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	third := registry.Execute(ctx, e, "nested", json.RawMessage(`{}`))
+	if third.Error == nil || third.Error.Code != "TIMEOUT" {
+		t.Fatalf("parent deadline not honored: %+v", third)
+	}
+	builtins := NewToolRegistry()
+	if err := (Builtins{}).Register(builtins); err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range builtins.Catalog() {
+		if spec.Name == "agent_dispatch" && (!spec.UseRunTimeout || spec.Timeout != 0) {
+			t.Fatal("dispatch must use remaining run budget")
+		}
 	}
 }
