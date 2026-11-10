@@ -1,0 +1,27 @@
+{
+  "target_agent_id": "<verified-worker-agent-id>",
+  "task": "只读协调测试：核实已有公共证据，比较方案；不要修改任何业务数据、记忆或调用下游。缺证据如实报告。",
+  "workflow": {
+    "workflow_id": "<verified-active-host-workflow-id>",
+    "version": 1
+  },
+  "context": {
+    "event": {
+      "event_id": "host-manual-001",
+      "content": "课程与竞赛安排可能冲突，请先整理事实、需要核实的信息和可选方案。",
+      "source": {
+        "platform": "manual"
+      },
+      "evidence_refs": [],
+      "occurred_at": null
+    },
+    "negotiation": {
+      "request_id": "host-request-001",
+      "problem": "课程与竞赛安排是否冲突",
+      "known_facts": [],
+      "business_refs": [],
+      "constraints": []
+    },
+    "related_run_id": null
+  }
+}

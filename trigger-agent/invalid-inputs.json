@@ -1,0 +1,572 @@
+[
+  {
+    "name": "缺少changes",
+    "input": {}
+  },
+  {
+    "name": "changes不是数组",
+    "input": {
+      "changes": null
+    }
+  },
+  {
+    "name": "缺变化ID",
+    "input": {
+      "changes": [
+        {
+          "operation": "created",
+          "resource": "message",
+          "after": "停课"
+        }
+      ]
+    }
+  },
+  {
+    "name": "未知操作",
+    "input": {
+      "changes": [
+        {
+          "change_id": "c1",
+          "operation": "unknown",
+          "resource": "message"
+        }
+      ]
+    }
+  },
+  {
+    "name": "重复变化ID",
+    "input": {
+      "changes": [
+        {
+          "change_id": "c1",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "c1",
+          "operation": "deleted",
+          "resource": "message"
+        }
+      ]
+    }
+  },
+  {
+    "name": "超过批次上限",
+    "input": {
+      "changes": [
+        {
+          "change_id": "0",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "1",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "2",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "3",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "4",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "5",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "6",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "7",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "8",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "9",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "10",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "11",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "12",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "13",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "14",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "15",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "16",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "17",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "18",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "19",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "20",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "21",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "22",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "23",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "24",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "25",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "26",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "27",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "28",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "29",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "30",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "31",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "32",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "33",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "34",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "35",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "36",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "37",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "38",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "39",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "40",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "41",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "42",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "43",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "44",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "45",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "46",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "47",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "48",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "49",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "50",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "51",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "52",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "53",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "54",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "55",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "56",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "57",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "58",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "59",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "60",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "61",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "62",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "63",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "64",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "65",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "66",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "67",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "68",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "69",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "70",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "71",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "72",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "73",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "74",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "75",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "76",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "77",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "78",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "79",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "80",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "81",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "82",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "83",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "84",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "85",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "86",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "87",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "88",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "89",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "90",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "91",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "92",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "93",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "94",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "95",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "96",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "97",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "98",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "99",
+          "operation": "created",
+          "resource": "message"
+        },
+        {
+          "change_id": "100",
+          "operation": "created",
+          "resource": "message"
+        }
+      ]
+    }
+  },
+  {
+    "name": "意外私有上下文",
+    "input": {
+      "changes": [],
+      "user_memory": "private"
+    }
+  }
+]

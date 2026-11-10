@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trigger Agent decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision",
+    "reason",
+    "relevant_change_ids"
+  ],
+  "properties": {
+    "decision": {
+      "enum": [
+        "TRIGGER",
+        "IGNORE",
+        "UNCERTAIN"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "relevant_change_ids": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "IGNORE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "relevant_change_ids": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trigger Agent batch input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "changes"
+  ],
+  "properties": {
+    "batch_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "changes": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "change_id",
+          "operation",
+          "resource"
+        ],
+        "properties": {
+          "change_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "operation": {
+            "enum": [
+              "created",
+              "updated",
+              "deleted",
+              "withdrawn"
+            ]
+          },
+          "resource": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "before": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 16384
+              },
+              {
+                "type": "object",
+                "maxProperties": 64
+              }
+            ]
+          },
+          "after": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 16384
+              },
+              {
+                "type": "object",
+                "maxProperties": 64
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changed_fields": {
+            "type": "array",
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "context": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384
+                },
+                {
+                  "type": "object",
+                  "maxProperties": 64
+                }
+              ]
+            }
+          },
+          "previously_relevant": {
+            "type": "boolean"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        }
+      }
+    }
+  }
+}
