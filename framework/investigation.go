@@ -32,14 +32,30 @@ func (p *investigationProgress) observe(call ToolCall, result ToolResult) {
 		var page QueryResult
 		raw, _ := json.Marshal(result.Data)
 		if json.Unmarshal([]byte(call.Function.Arguments), &q) == nil && json.Unmarshal(raw, &page) == nil {
+			offset := q.Offset
 			q.Offset = 0
 			keyRaw, _ := json.Marshal(q)
 			key := string(keyRaw)
 			if p.queryPending == nil {
 				p.queryPending = map[string]Query{}
 			}
-			if page.HasMore && page.NextOffset != nil {
-				q.Offset = *page.NextOffset
+			expected := 0
+			if pending, ok := p.queryPending[key]; ok {
+				expected = pending.Offset
+			}
+			// A terminal page proves completion only after every preceding page
+			// of this exact projection has been read. Skips and rereads must not
+			// erase or move the outstanding continuation.
+			if offset != expected {
+				q.Offset = expected
+				p.queryPending[key] = q
+				return
+			}
+			if page.HasMore {
+				q.Offset = expected
+				if page.NextOffset != nil && *page.NextOffset > expected {
+					q.Offset = *page.NextOffset
+				}
 				p.queryPending[key] = q
 			} else {
 				delete(p.queryPending, key)

@@ -42,9 +42,10 @@ type Query struct {
 	Offset  int      `json:"offset"`
 }
 type QueryResult struct {
-	Rows       []map[string]any `json:"rows"`
-	HasMore    bool             `json:"has_more"`
-	NextOffset *int             `json:"next_offset,omitempty"`
+	Rows            []map[string]any `json:"rows"`
+	HasMore         bool             `json:"has_more"`
+	NextOffset      *int             `json:"next_offset,omitempty"`
+	PageLimitReason string           `json:"page_limit_reason,omitempty"`
 }
 
 type KeywordSearchRequest struct {
@@ -184,7 +185,7 @@ func (b Builtins) registerData(add addTool) error {
 		"datasets": map[string]any{"type": "array", "minItems": 1, "maxItems": 6, "uniqueItems": true, "items": enum("platform_records", "academic_offerings", "academic_items", "schedules", "dws_messages", "dws_attachments")},
 		"cursor":   str(8192), "limit": integer(1, 100),
 	}, "keywords")
-	if err := add("data_search", "Search authorized datasets using OR keywords across course names, titles, bodies, teachers and other safe text fields. No implicit course filter. Use course aliases and related terms; continue next_cursor until has_more=false, inspect coverage, then data_query linked references for details.", "data.read", searchSchema, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
+	if err := add("data_search", "Search archived authorized data with case-insensitive literal OR keywords. datasets is optional (default all six); no implicit course filter. Hits are summaries; _truncated_fields marks shortened fields. To read another page, reuse next_cursor with unchanged keywords/datasets. Decide whether more evidence is needed for the task.", "data.read", searchSchema, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
 		service, ok := b.Data.(KeywordSearchService)
 		if !ok {
 			return nil, Fail("NOT_IMPLEMENTED", "keyword data search is not configured")
@@ -221,9 +222,9 @@ func (b Builtins) registerData(add addTool) error {
 	}); err != nil {
 		return err
 	}
-	filter := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"field", "operator", "value"}, "properties": map[string]any{"field": str(128), "operator": map[string]any{"enum": []string{"eq", "ne", "lt", "lte", "gt", "gte", "contains"}}, "value": map[string]any{"type": []string{"string", "number", "boolean", "null"}}}}
+	filter := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"field", "operator", "value"}, "properties": map[string]any{"field": str(128), "operator": map[string]any{"enum": []string{"eq", "ne", "lt", "lte", "gt", "gte", "contains"}}, "value": map[string]any{"type": "string", "maxLength": 4096}}}
 	schema := object(map[string]any{"dataset": str(128), "fields": map[string]any{"type": "array", "items": str(128), "minItems": 1, "maxItems": 32, "uniqueItems": true}, "filters": map[string]any{"type": "array", "items": filter, "maxItems": 20}, "limit": integer(1, 100), "offset": integer(0, 10000)}, "dataset", "fields")
-	return add("data_query", "Query an authorized dataset using readonly structured filters, never raw SQL", "data.read", schema, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
+	return add("data_query", "Query one archived authorized dataset. Use data_list_tables/data_describe_table for dataset and field names: both fields[] and filters[].field must belong to the selected dataset's catalog; do not infer names from another dataset. All filters are AND; values must be strings. contains is case-sensitive literal substring; timestamp comparisons require RFC3339 with timezone; other fields compare as text. fields: 1–32 catalog names. limit defaults to 20, max 100; byte budgets may return fewer rows without shortening fields. If another page is needed, use next_offset with the same filters/fields; never calculate offset from limit. has_more reports remaining rows, not task completeness. page_limit_reason explains byte or offset boundaries. No SQL or custom joins.", "data.read", schema, func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
 		p := decode[Query](raw)
 		if p.Limit == 0 {
 			p.Limit = 20
@@ -247,12 +248,12 @@ func (b Builtins) registerData(add addTool) error {
 		}
 		for _, f := range p.Fields {
 			if !fields[f] {
-				return nil, Fail("PERMISSION_DENIED", "field is not authorized")
+				return nil, Fail("PERMISSION_DENIED", "field is not authorized: "+f+"; see data_describe_table for "+p.Dataset+". This query did not execute")
 			}
 		}
 		for _, f := range p.Filters {
 			if !fields[f.Field] {
-				return nil, Fail("PERMISSION_DENIED", "filter field is not authorized")
+				return nil, Fail("PERMISSION_DENIED", "filter field is not authorized: "+f.Field+"; see data_describe_table for "+p.Dataset+". This query did not execute")
 			}
 		}
 		result, err := b.Data.Query(ctx, e.Scope, p)
@@ -278,6 +279,10 @@ func (b Builtins) registerWorkflows(add addTool) error {
 	for k, v := range fields {
 		createFields[k] = v
 	}
+	// Optional profile metadata is an object, not a prescribed investigation plan.
+	createFields["definition"] = map[string]any{"type": "object", "properties": map[string]any{
+		"profile_manifest": map[string]any{"type": []string{"object", "null"}, "description": "Optional profile notes. No required datasets, coverage metrics or retrieval strategy."},
+	}}
 	seedFields := memoryInputFields()
 	for _, key := range []string{"visibility", "owner_agent_id", "owner_workflow_id", "parent_memory_id", "status", "valid_from", "valid_until"} {
 		delete(seedFields, key)
@@ -286,7 +291,7 @@ func (b Builtins) registerWorkflows(add addTool) error {
 	seedFields["source_refs"] = map[string]any{"type": "array", "minItems": 1, "maxItems": 100, "items": map[string]any{"oneOf": []any{str(2048), map[string]any{"type": "object", "minProperties": 1, "maxProperties": 32}}}}
 	var seedSchema map[string]any
 	_ = json.Unmarshal(object(seedFields, "title", "content", "source_refs"), &seedSchema)
-	createFields["initial_private_memories"] = map[string]any{"type": "array", "minItems": 1, "maxItems": MaxWorkflowPrivateMemories, "items": seedSchema}
+	createFields["initial_private_memories"] = map[string]any{"type": "array", "description": "Optional initial memories, committed atomically to the new Workflow PRI. Each seed requires title, content and source_refs; categories and number of topics are chosen by the model.", "minItems": 1, "maxItems": MaxWorkflowPrivateMemories, "items": seedSchema}
 	if err := add("workflow_create", "Create a private workflow definition without executing it. Optional initial_private_memories atomically initialize its private course profile; requires memory.write as well as workflow.write. Ownership is server-bound to the new workflow. Source references are required; return profile_initialization.memory_ids as persistence receipts. After an uncertain response reconcile workflow_list/get before retrying.", "workflow.write", object(createFields, "name", "definition"), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
 		p := decode[struct {
 			Workflow

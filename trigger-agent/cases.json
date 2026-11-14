@@ -587,5 +587,302 @@
       "decision": "IGNORE",
       "relevant_change_ids": []
     }
+  },
+  {
+    "name": "首次课程基础信息无行动要求",
+    "input": {
+      "changes": [
+        {
+          "change_id": "identity",
+          "operation": "created",
+          "resource": "course",
+          "after": {
+            "title": "数学分析",
+            "teacher": "示例教师",
+            "class_id": "fixture-class"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "identity"
+      ]
+    }
+  },
+  {
+    "name": "首次旧教材目录仍有信息价值",
+    "input": {
+      "changes": [
+        {
+          "change_id": "textbook",
+          "operation": "created",
+          "resource": "material",
+          "after": {
+            "name": "2020版教材.pdf",
+            "path": [
+              "课程资料",
+              "教材"
+            ]
+          }
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "textbook"
+      ]
+    }
+  },
+  {
+    "name": "首次课程目录与任务点结构",
+    "input": {
+      "changes": [
+        {
+          "change_id": "chapter",
+          "operation": "created",
+          "resource": "lesson",
+          "after": {
+            "title": "第二章 一元微分学",
+            "node_id": "node-2",
+            "path": [
+              "第二章",
+              "导数"
+            ]
+          }
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "chapter"
+      ]
+    }
+  },
+  {
+    "name": "零进度和未完成是有效信息",
+    "input": {
+      "changes": [
+        {
+          "change_id": "progress",
+          "operation": "created",
+          "resource": "progress",
+          "after": {
+            "node_id": "node-2",
+            "task_point_remaining": 3,
+            "task_point_completed": 0,
+            "personal_status": "incomplete"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "progress"
+      ]
+    }
+  },
+  {
+    "name": "已完成作业也有状态价值",
+    "input": {
+      "changes": [
+        {
+          "change_id": "done",
+          "operation": "created",
+          "resource": "assignment",
+          "after": {
+            "title": "第一章作业",
+            "status": "completed",
+            "source_status": "已完成"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "done"
+      ]
+    }
+  },
+  {
+    "name": "讨论本人参与无新待办也应放行",
+    "input": {
+      "changes": [
+        {
+          "change_id": "reply",
+          "operation": "created",
+          "resource": "discussion_reply_user",
+          "after": {
+            "topic_id": "topic-24",
+            "is_current_user": true,
+            "participation_status": "reply_observed"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "reply"
+      ]
+    }
+  },
+  {
+    "name": "进度状态改变而非技术噪声",
+    "input": {
+      "changes": [
+        {
+          "change_id": "state",
+          "operation": "updated",
+          "resource": "progress",
+          "before": {
+            "node_id": "n1",
+            "completed": false
+          },
+          "after": {
+            "node_id": "n1",
+            "completed": true
+          },
+          "changed_fields": [
+            "completed"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "state"
+      ]
+    }
+  },
+  {
+    "name": "采集时间变化不重复提升旧内容",
+    "input": {
+      "changes": [
+        {
+          "change_id": "clock",
+          "operation": "updated",
+          "resource": "material",
+          "before": {
+            "name": "教材.pdf",
+            "observed_at": "2026-11-09T00:00:00Z"
+          },
+          "after": {
+            "name": "教材.pdf",
+            "observed_at": "2026-11-10T00:00:00Z"
+          },
+          "changed_fields": [
+            "observed_at"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "decision": "IGNORE",
+      "relevant_change_ids": []
+    }
+  },
+  {
+    "name": "仅倒计时自然减少",
+    "input": {
+      "changes": [
+        {
+          "change_id": "timer",
+          "operation": "updated",
+          "resource": "assignment",
+          "before": {
+            "title": "作业",
+            "remaining_hours": 9
+          },
+          "after": {
+            "title": "作业",
+            "remaining_hours": 8
+          },
+          "changed_fields": [
+            "remaining_hours"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "decision": "IGNORE",
+      "relevant_change_ids": []
+    }
+  },
+  {
+    "name": "空资料占位无业务信息",
+    "input": {
+      "changes": [
+        {
+          "change_id": "empty",
+          "operation": "created",
+          "resource": "material",
+          "after": {}
+        }
+      ]
+    },
+    "expected": {
+      "decision": "IGNORE",
+      "relevant_change_ids": []
+    }
+  },
+  {
+    "name": "混合画像不能只留未交作业",
+    "input": {
+      "changes": [
+        {
+          "change_id": "catalog",
+          "operation": "created",
+          "resource": "lesson",
+          "after": {
+            "title": "第三章 积分"
+          }
+        },
+        {
+          "change_id": "assignment",
+          "operation": "created",
+          "resource": "assignment",
+          "after": {
+            "title": "积分练习",
+            "status": "open"
+          }
+        },
+        {
+          "change_id": "done",
+          "operation": "created",
+          "resource": "progress",
+          "after": {
+            "node_id": "n3",
+            "personal_status": "completed"
+          }
+        },
+        {
+          "change_id": "unknown",
+          "operation": "deleted",
+          "resource": "message"
+        },
+        {
+          "change_id": "chat",
+          "operation": "created",
+          "resource": "message",
+          "after": "哈哈"
+        }
+      ]
+    },
+    "expected": {
+      "decision": "TRIGGER",
+      "relevant_change_ids": [
+        "catalog",
+        "assignment",
+        "done",
+        "unknown"
+      ]
+    }
   }
 ]

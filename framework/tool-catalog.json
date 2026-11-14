@@ -227,7 +227,7 @@
   },
   {
     "name": "data_query",
-    "description": "Query an authorized dataset using readonly structured filters, never raw SQL",
+    "description": "Query one archived authorized dataset. Use data_list_tables/data_describe_table for dataset and field names: both fields[] and filters[].field must belong to the selected dataset's catalog; do not infer names from another dataset. All filters are AND; values must be strings. contains is case-sensitive literal substring; timestamp comparisons require RFC3339 with timezone; other fields compare as text. fields: 1–32 catalog names. limit defaults to 20, max 100; byte budgets may return fewer rows without shortening fields. If another page is needed, use next_offset with the same filters/fields; never calculate offset from limit. has_more reports remaining rows, not task completeness. page_limit_reason explains byte or offset boundaries. No SQL or custom joins.",
     "parameters": {
       "additionalProperties": false,
       "properties": {
@@ -268,12 +268,8 @@
                 ]
               },
               "value": {
-                "type": [
-                  "string",
-                  "number",
-                  "boolean",
-                  "null"
-                ]
+                "maxLength": 4096,
+                "type": "string"
               }
             },
             "required": [
@@ -314,6 +310,13 @@
           "minimum": 0,
           "type": "integer"
         },
+        "page_limit_reason": {
+          "enum": [
+            "byte_budget",
+            "offset_limit"
+          ],
+          "type": "string"
+        },
         "rows": {
           "items": {
             "type": "object"
@@ -322,7 +325,8 @@
         }
       },
       "required": [
-        "rows"
+        "rows",
+        "has_more"
       ],
       "type": "object"
     },
@@ -333,7 +337,7 @@
   },
   {
     "name": "data_search",
-    "description": "Search authorized datasets using OR keywords across course names, titles, bodies, teachers and other safe text fields. No implicit course filter. Use course aliases and related terms; continue next_cursor until has_more=false, inspect coverage, then data_query linked references for details.",
+    "description": "Search archived authorized data with case-insensitive literal OR keywords. datasets is optional (default all six); no implicit course filter. Hits are summaries; _truncated_fields marks shortened fields. To read another page, reuse next_cursor with unchanged keywords/datasets. Decide whether more evidence is needed for the task.",
     "parameters": {
       "additionalProperties": false,
       "properties": {
@@ -1823,6 +1827,15 @@
       "additionalProperties": false,
       "properties": {
         "definition": {
+          "properties": {
+            "profile_manifest": {
+              "description": "Optional profile notes. No required datasets, coverage metrics or retrieval strategy.",
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          },
           "type": "object"
         },
         "description": {
@@ -1830,6 +1843,7 @@
           "type": "string"
         },
         "initial_private_memories": {
+          "description": "Optional initial memories, committed atomically to the new Workflow PRI. Each seed requires title, content and source_refs; categories and number of topics are chosen by the model.",
           "items": {
             "additionalProperties": false,
             "properties": {

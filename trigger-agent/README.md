@@ -1,5 +1,9 @@
 # Trigger Agent：变化初筛
 
+当前 Trigger 只判断信息是否值得下游理解、关联、核查或更新知识。目录、资料、进度、已完成作业及讨论参与记录即使没有新行动要求，也可能有画像价值。是否新增待办、日程、通知或具体事项属于后续处理，不能作为 Trigger 放行门槛。`created` 不证明新发布，但也不是过滤首次采集信息的理由。
+
+以下保留早期框架验收背景；当前课程批次由后端 runcontrol 接线，实际提示词以本目录 system-prompt.md 为准。
+
 这是第一个基于现有通用框架配置的业务 Agent。交付范围依据本目录 AGENT.md：提示词、输入输出协议、案例和可加载定义，不修改 Go Framework，不实现 Filter/Worker，也不把后端 trigger 自动接线当作已完成。
 
 | 文件 | 用途 |
@@ -9,7 +13,7 @@
 | input.schema.json | 输入 JSON Schema，Draft 2020-12 |
 | output.schema.json | 输出 JSON Schema，Draft 2020-12 |
 | invalid-inputs.json | 7 个必须在调用模型前拒绝的异常输入，含重复 ID |
-| cases.json | 30 个输入与预期 decision、相关 ID；reason 不做逐字断言 |
+| cases.json | 41 个输入与预期 decision、相关 ID；reason 不做逐字断言 |
 | evaluate.py | 契约校验及一次命令批量真实模型测试；可将通过的定义加入本地后台 |
 
 ## 运行边界
@@ -87,6 +91,10 @@ python3 -m venv /tmp/trigger-eval
 /tmp/trigger-eval/bin/python agent/trigger-agent/evaluate.py --live --install
 ```
 
---live 顺序执行全部 30 项（单一批量脚本，避免供应商突发限流），检查严格 JSON、预期判断、相关 ID、1 次模型调用和 0 次工具调用。--install 在本次全部用例通过后，为登录管理员添加 Trigger 实例；同名同角色实例存在时更新，发现已有记忆则拒绝覆盖。它不更改模型服务配置和 key。定义模板中的模型取已配置且有 key 的第一个服务；如需独立供应商，请在后台修改实例。
+--live 顺序执行全部 41 项（单一批量脚本，避免供应商突发限流），检查严格 JSON、预期判断、相关 ID、1 次模型调用和 0 次工具调用。--install 在本次全部用例通过后，为登录管理员添加 Trigger 实例；同名同角色实例存在时更新，发现已有记忆则拒绝覆盖。它不更改模型服务配置和 key。定义模板中的模型取已配置且有 key 的第一个服务；如需独立供应商，请在后台修改实例。
 
 报告默认为 .build/trigger-agent-evaluation.json。单次样本通过不代表所有真实数据准确；上线前应使用脱敏真实变更集持续评估漏报率、误报率和延迟。
+
+## 信息价值职责回归
+
+新增11个用例覆盖首次课程身份、旧教材与目录、零进度、已完成作业、本人讨论回复、真实进度改变、纯观察时间和倒计时噪声、空资料壳，以及混合批次不能只留未交作业。已有“无副作用、无个性化、无工具”的边界保持。TRIGGER只表示信息应保留给下游，不代表新增事件或执行授权。

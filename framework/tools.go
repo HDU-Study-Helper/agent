@@ -134,7 +134,11 @@ func (r *ToolRegistry) Execute(ctx context.Context, e ExecutionContext, name str
 	}
 	var input any
 	if err := json.Unmarshal(args, &input); err != nil {
-		return fail(Fail("INVALID_ARGUMENT", "invalid JSON arguments"))
+		message := "invalid JSON arguments"
+		if syntax, ok := err.(*json.SyntaxError); ok {
+			message = fmt.Sprintf("invalid JSON arguments at byte %d; send one complete JSON object with escaped string values and balanced brackets", syntax.Offset)
+		}
+		return fail(Fail("INVALID_ARGUMENT", message))
 	}
 	if err := t.input.Validate(input); err != nil {
 		return fail(Fail("INVALID_ARGUMENT", inputSchemaError(err, t.spec.InputSchema)))

@@ -109,6 +109,9 @@ func CleanQueryData(value any) any {
 		if page.NextOffset != nil {
 			value.(map[string]any)["next_offset"] = *page.NextOffset
 		}
+		if page.PageLimitReason != "" {
+			value.(map[string]any)["page_limit_reason"] = page.PageLimitReason
+		}
 	case KeywordSearchResult:
 		hits := make([]any, len(page.Hits))
 		for i, hit := range page.Hits {

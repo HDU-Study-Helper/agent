@@ -228,7 +228,10 @@ func (r *Runtime) Run(ctx context.Context, owner string, req RunRequest) (res Ru
 	if req.DisableTools {
 		specs = nil
 	}
+	specs = attachDispatchTargets(ctx, r.Repository, e.Scope, specs)
 	investigation := investigationProgress{}
+	filter := newFilterHandoff(ctx, a, e, req)
+	child := newChildHandoff(ctx, a, e, req)
 	for round := 0; a.Limits.Unlimited || round < a.Limits.ModelCalls; round++ {
 		if err = ctx.Err(); err != nil {
 			return res, err
@@ -275,11 +278,24 @@ func (r *Runtime) Run(ctx context.Context, owner string, req RunRequest) (res Ru
 					continue
 				}
 			}
+			if continuation, validationErr := filter.validate(reply.Message.Content, record.ToolExecutions); validationErr != nil {
+				return res, validationErr
+			} else if continuation != "" {
+				messages = append(messages, reply.Message, Message{Role: "user", Content: continuation})
+				continue
+			}
+			if continuation, validationErr := child.validate(reply.Message.Content, record.ToolExecutions); validationErr != nil {
+				return res, validationErr
+			} else if continuation != "" {
+				messages = append(messages, reply.Message, Message{Role: "user", Content: continuation})
+				specs = nil // Child corrections only format existing results; never repeat writes.
+				continue
+			}
 			res.Output = reply.Message.Content
 			return res, nil
 		}
-		if req.DisableTools {
-			return res, Fail("PERMISSION_DENIED", "tools are disabled for this host-requested run")
+		if req.DisableTools || child.corrections > 0 {
+			return res, Fail("PERMISSION_DENIED", "tools are disabled for this host-requested run or child format correction")
 		}
 		if !a.Limits.Unlimited && len(reply.Message.ToolCalls) > a.Limits.ToolCalls-record.ToolCalls {
 			return res, Fail("EXECUTION_LIMIT_EXCEEDED", "tool call limit exceeded")

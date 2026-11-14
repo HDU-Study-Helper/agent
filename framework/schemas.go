@@ -51,7 +51,7 @@ func builtinOutputSchema(name string) json.RawMessage {
 	case "data_describe_table":
 		schema = dataset
 	case "data_query":
-		schema = record(map[string]any{"rows": array(map[string]any{"type": "object"}), "has_more": map[string]any{"type": "boolean"}, "next_offset": integer(0, 10000)}, "rows")
+		schema = record(map[string]any{"rows": array(map[string]any{"type": "object"}), "has_more": map[string]any{"type": "boolean"}, "next_offset": integer(0, 10000), "page_limit_reason": enum("byte_budget", "offset_limit")}, "rows", "has_more")
 	case "data_search":
 		schema = record(map[string]any{
 			"hits":     array(record(map[string]any{"dataset": text, "row": map[string]any{"type": "object"}}, "dataset", "row")),
