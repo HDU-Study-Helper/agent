@@ -33,14 +33,14 @@ func TestSchemaDiagnosticsIdentifyPathsWithoutEchoingInput(t *testing.T) {
 		}
 	}
 }
-func TestDispatchSchemaDiagnosticsSourceObject(t *testing.T) {
+func TestDispatchSchemaDiagnosticsContextObject(t *testing.T) {
 	compiled, err := compileSchema(dispatchInputSchema())
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := map[string]any{"target_agent_id": "worker", "task": "check", "workflow": map[string]any{"workflow_id": "wf", "version": 1}, "context": map[string]any{"event": map[string]any{"event_id": "e", "content": []any{}, "source": "private-token-value", "evidence_refs": []any{}}}}
+	input := map[string]any{"target_agent_id": "agent", "task": "check", "workflow": map[string]any{"workflow_id": "wf", "version": 1}, "context": "private-token-value"}
 	message := inputSchemaError(compiled.Validate(input), dispatchInputSchema())
-	if !strings.Contains(message, "/context/event/source") || !strings.Contains(message, "expected object") || strings.Contains(message, "private-token-value") {
+	if !strings.Contains(message, "/context") || !strings.Contains(message, "expected object") || strings.Contains(message, "private-token-value") {
 		t.Fatal(message)
 	}
 }

@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Trigger Agent decision",
+  "title": "Trigger Agent decision · indices_v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "decision",
     "reason",
-    "relevant_change_ids"
+    "relevant_indices"
   ],
   "properties": {
     "decision": {
@@ -21,14 +21,14 @@
       "minLength": 1,
       "maxLength": 120
     },
-    "relevant_change_ids": {
+    "relevant_indices": {
       "type": "array",
       "maxItems": 100,
       "uniqueItems": true,
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 128
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
       }
     }
   },
@@ -43,7 +43,7 @@
       },
       "then": {
         "properties": {
-          "relevant_change_ids": {
+          "relevant_indices": {
             "maxItems": 0
           }
         }

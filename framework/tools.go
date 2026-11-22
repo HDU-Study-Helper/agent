@@ -21,6 +21,10 @@ type ToolSpec struct {
 	Timeout      time.Duration   `json:"timeout"`
 	// UseRunTimeout allows nested runs to use the remaining run budget.
 	UseRunTimeout bool `json:"use_run_timeout,omitempty"`
+	// ReadOnly is trusted registration metadata, never a model argument. An
+	// oversized result from a read can be narrowed safely; a write may already
+	// have committed and retains the terminal result-limit behavior.
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 type ToolResult struct {
 	OK    bool   `json:"ok"`
@@ -182,6 +186,9 @@ func (r *ToolRegistry) Execute(ctx context.Context, e ExecutionContext, name str
 		}
 	}
 	if len(raw) > e.Limits.ToolResultBytes {
+		if t.spec.ReadOnly {
+			return fail(Fail("INVALID_ARGUMENT", fmt.Sprintf("read-only tool %s result is %d bytes, exceeding the %d-byte result budget; no result content was returned or truncated. Reduce the query limit or narrow its scope; select fewer fields only if this tool supports projection. If a single object still exceeds the budget and the tool offers no paging or projection, report that it cannot be read completely instead of repeating the same request", name, len(raw), e.Limits.ToolResultBytes)))
+		}
 		return fail(Fail("EXECUTION_LIMIT_EXCEEDED", "tool result exceeds budget"))
 	}
 	var output any

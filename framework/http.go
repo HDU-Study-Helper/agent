@@ -23,6 +23,7 @@ type HTTPConfig struct {
 	MaxConcurrent int
 	Retries       int
 	RetryBackoff  time.Duration
+	APIProtocol   string // empty or chat_completions, or responses
 }
 
 func newHTTP(c HTTPConfig) (*http.Client, string, error) {
@@ -94,10 +95,10 @@ func postJSON(ctx context.Context, client *http.Client, endpoint, key string, in
 	return nil
 }
 
-// OpenAIProvider translates domain messages to Chat Completions; no SDK types escape it.
+// OpenAIProvider translates domain messages to the configured OpenAI-compatible protocol.
 type OpenAIProvider struct {
 	client                 *http.Client
-	base, key              string
+	base, key, protocol    string
 	gate                   *modelGate
 	maxConcurrent, retries int
 	backoff                time.Duration
@@ -116,13 +117,24 @@ func NewOpenAIProvider(c HTTPConfig) (*OpenAIProvider, error) {
 	if c.RetryBackoff <= 0 {
 		c.RetryBackoff = time.Second
 	}
+	switch c.APIProtocol {
+	case "", "chat_completions", "responses":
+	default:
+		return nil, Fail("INVALID_ARGUMENT", "model API protocol must be chat_completions or responses")
+	}
 	client, base, err := newHTTP(c)
 	if err != nil {
 		return nil, err
 	}
-	return &OpenAIProvider{client: client, base: base, key: c.APIKey, gate: sharedModelGate(base, c.APIKey), maxConcurrent: c.MaxConcurrent, retries: c.Retries, backoff: c.RetryBackoff}, nil
+	return &OpenAIProvider{client: client, base: base, key: c.APIKey, protocol: c.APIProtocol, gate: sharedModelGate(base, c.APIKey), maxConcurrent: c.MaxConcurrent, retries: c.Retries, backoff: c.RetryBackoff}, nil
 }
 func (p *OpenAIProvider) Complete(ctx context.Context, r ModelRequest) (ModelResponse, error) {
+	if err := ValidateModelParameters(r.Config.Parameters); err != nil {
+		return ModelResponse{}, err
+	}
+	if p.protocol == "responses" {
+		return p.completeResponses(ctx, r)
+	}
 	payload := map[string]any{"model": r.Config.Model, "messages": r.Messages, "stream": false}
 	if r.Config.Temperature != nil {
 		payload["temperature"] = *r.Config.Temperature
@@ -145,7 +157,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, r ModelRequest) (ModelRes
 	}
 	if len(r.Tools) > 0 {
 		tools := []any{}
-		for _, t := range r.Tools {
+		for _, t := range ModelFacingTools(r.Tools) {
 			tools = append(tools, map[string]any{"type": "function", "function": map[string]any{"name": t.Name, "description": t.Description, "parameters": t.InputSchema}})
 		}
 		payload["tools"] = tools
@@ -162,7 +174,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, r ModelRequest) (ModelRes
 		} `json:"choices"`
 		Usage Usage `json:"usage"`
 	}
-	if err := p.request(ctx, payload, &response); err != nil {
+	if err := p.request(ctx, "/chat/completions", payload, &response); err != nil {
 		return ModelResponse{}, err
 	}
 	if len(response.Choices) != 1 {

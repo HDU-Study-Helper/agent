@@ -3,6 +3,7 @@ package framework
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -208,59 +209,42 @@ func TestUnifiedDispatchPreservesStructuredChanges(t *testing.T) {
 	}
 }
 
-func TestDispatchBindsValidatedEntityWithoutGrantingAuthority(t *testing.T) {
-	for _, tc := range []struct {
-		name, requested string
-		allow           bool
-	}{
-		{"missing", "", true},
-		{"truncated", `{"kind":"course","id":"source=chaoxing|connection=c","name":"short"}`, true},
-		{"different", `{"kind":"course","id":"foreign-course"}`, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			repo := &workflowDispatchRepo{fakeRepo: newFakeRepo(), w: Workflow{ID: "wf", OwnerID: "owner", Version: 3, Status: "active", Definition: json.RawMessage(`{"entity":{"kind":"course","id":"source=chaoxing|connection=c|course_ref=[\"course\",\"class\"]","name":"精确课程"}}`)}}
+func TestDispatchPreservesArbitraryContextWithWorkflow(t *testing.T) {
+	for _, contextJSON := range []string{"", `{}`, `{"entity":{"kind":"custom","id":"different-entity"},"nested":{"values":[null,false,9007199254740993]}}`, `{"event":"custom event","source":null,"entity_warning":"caller data"}`} {
+		t.Run(contextJSON, func(t *testing.T) {
+			repo := &workflowDispatchRepo{fakeRepo: newFakeRepo(), w: Workflow{ID: "wf", OwnerID: "owner", Version: 3, Status: "active", Definition: json.RawMessage(`{"entity":{"kind":"course","id":"workflow-entity","name":"Workflow entity"}}`)}}
+			want := map[string]json.RawMessage{}
+			if contextJSON != "" {
+				_ = json.Unmarshal([]byte(contextJSON), &want)
+			}
 			tools := NewToolRegistry()
 			called := false
 			err := (Builtins{Repository: repo, Dispatcher: dispatchFunc(func(_ context.Context, e ExecutionContext, req RunRequest) (RunResult, error) {
 				called = true
-				if e.Scope.OwnerID != "owner" || e.Scope.WorkflowID != "wf" || e.Has("schedule.write") {
-					t.Fatal("entity changed authority", e.Scope)
+				if e.Scope.OwnerID != "owner" || e.Scope.WorkflowID != "wf" || e.Has("schedule.write") || e.workflowSnapshot == nil || e.workflowSnapshot.Version != 3 || string(e.workflowSnapshot.Definition) != string(repo.w.Definition) {
+					t.Fatal("context changed authority or lost trusted snapshot", e.Scope)
 				}
 				var input struct {
 					Task    string                     `json:"task"`
 					Context map[string]json.RawMessage `json:"context"`
 				}
-				if json.Unmarshal(req.Input, &input) != nil || input.Task != "Handle the event" {
-					t.Fatal("task changed")
-				}
-				var entity struct {
-					ID string `json:"id"`
-				}
-				if json.Unmarshal(input.Context["entity"], &entity) != nil || entity.ID != `source=chaoxing|connection=c|course_ref=["course","class"]` {
-					t.Fatal("entity not bound", string(req.Input))
-				}
-				if tc.requested != "" && (len(input.Context["requested_entity"]) == 0 || len(input.Context["entity_warning"]) == 0) {
-					t.Fatal("missing mismatch warning")
+				if json.Unmarshal(req.Input, &input) != nil || input.Task != "Handle the event" || !reflect.DeepEqual(input.Context, want) {
+					t.Fatal("business context was rewritten", string(req.Input))
 				}
 				return RunResult{RunID: "child", Output: "ok"}, nil
 			})}).Register(tools)
 			if err != nil {
 				t.Fatal(err)
 			}
-			var payload map[string]any
-			_ = json.Unmarshal([]byte(unifiedDispatchArgs), &payload)
-			if tc.requested != "" {
-				var requested any
-				_ = json.Unmarshal([]byte(tc.requested), &requested)
-				payload["context"].(map[string]any)["entity"] = requested
+			payload := map[string]any{"target_agent_id": "child", "task": "Handle the event", "workflow": WorkflowSelection{ID: "wf", Version: 3}}
+			if contextJSON != "" {
+				payload["context"] = json.RawMessage(contextJSON)
 			}
 			raw, _ := json.Marshal(payload)
-			result := tools.Execute(context.Background(), toolContext([]string{"agent_dispatch"}, []string{"agent.dispatch", "workflow.read"}), "agent_dispatch", raw)
-			if result.OK != tc.allow || called != tc.allow {
-				t.Fatal(result, called)
-			}
-			if !tc.allow && (result.Error == nil || result.Error.Code != "PERMISSION_DENIED") {
-				t.Fatal(result)
+			e := toolContext([]string{"agent_dispatch"}, []string{"agent.dispatch", "workflow.read"})
+			result := tools.Execute(context.Background(), e, "agent_dispatch", raw)
+			if !result.OK || !called || e.Scope.WorkflowID != "" || e.workflowSnapshot != nil {
+				t.Fatal("dispatch failed or child scope leaked to caller", result, called, e.Scope)
 			}
 		})
 	}
@@ -277,7 +261,8 @@ func TestUnifiedDispatchRejectsInvalidSelection(t *testing.T) {
 		{"foreign", unifiedDispatchArgs, "workflow.read", "active", "other", "", "RESOURCE_NOT_FOUND", 3},
 		{"no read", unifiedDispatchArgs, "", "active", "owner", "", "PERMISSION_DENIED", 3},
 		{"switch", unifiedDispatchArgs, "workflow.read", "active", "owner", "other-wf", "PERMISSION_DENIED", 3},
-		{"missing event", `{"target_agent_id":"child","task":"x","workflow":{"workflow_id":"wf","version":3},"context":{}}`, "workflow.read", "active", "owner", "", "INVALID_ARGUMENT", 3},
+		{"parent snapshot changed", unifiedDispatchArgs, "workflow.read", "active", "owner", "wf", "CONFLICT", 3},
+		{"non-object context", `{"target_agent_id":"child","task":"x","workflow":{"workflow_id":"wf","version":3},"context":[]}`, "workflow.read", "active", "owner", "", "INVALID_ARGUMENT", 3},
 		{"string version", strings.Replace(unifiedDispatchArgs, `"version":3`, `"version":"v3"`, 1), "workflow.read", "active", "owner", "", "INVALID_ARGUMENT", 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,6 +277,9 @@ func TestUnifiedDispatchRejectsInvalidSelection(t *testing.T) {
 			}
 			e := toolContext([]string{"agent_dispatch"}, []string{"agent.dispatch", tc.permission})
 			e.Scope.WorkflowID = tc.scope
+			if tc.name == "parent snapshot changed" {
+				e.workflowSnapshot = &Workflow{ID: "wf", Version: 2}
+			}
 			result := tools.Execute(context.Background(), e, "agent_dispatch", json.RawMessage(tc.args))
 			if result.OK || result.Error.Code != tc.want || called {
 				t.Fatal(result, called)

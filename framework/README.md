@@ -2,7 +2,9 @@
 
 通用 Go Agent Framework，主体位于 `agent/framework`。不包含 Filter、Worker、Learner 业务实现、HTTP 路由或 Workflow 执行引擎。框架作为独立 Go module，通过接口接入现有后端；`backend/internal/agent` 适配已有 `bridge.Port`，全部 PostgreSQL 访问仍由 `backend/internal/dbbridge` 实现。
 
-Worker统一调用仍使用 `agent_dispatch`，支持经校验的Workflow选择、可信子上下文、版本快照及Run审计；输入与兼容性见 [DISPATCH.md](DISPATCH.md)。
+跨 Agent 调用使用通用 `agent_dispatch`，支持经校验的 Workflow 选择、可信子上下文、版本快照及 Run 审计；输入与兼容性见 [DISPATCH.md](DISPATCH.md)。
+
+可信宿主可用 `WithOutputValidation` 为特定 owner/agent 安装最终输出校验，默认不安装。格式错误在同一Run内最多反馈两次，格式修复的下一轮禁用工具；可恢复的语义/状态错误可恢复原授权工具，仍受原预算、上下文和截止时间约束。所有调用和Token计入同Run，`output_corrections`只记录拒绝尝试的kind/code；若初次输出和两次修复都失败，审计可有三条拒绝记录，实际额外修复调用仍只有两次；权限、存储冲突、取消或预算耗尽不自动重试。Runtime不按Agent角色选择校验策略，具体JSON及暂存提交规则由宿主提供。
 
 本阶段已实现实例配置 CRUD、受限多轮 Tool Calling、21 个内置工具、用户 PUB / Agent PRI / Workflow PRI 记忆、同步跨 Agent 调度、Workflow 定义和版本持久化，以及 OpenAI 兼容模型和 DeepSeek Search / Fetch 适配。后端已在 App 启动时装配框架，并提供 `/admin/agents` 临时管理页；管理 HTTP 位于独立的 backend/internal/agentadmin，框架核心仍只提供内部 Go 接口。
 
@@ -32,11 +34,15 @@ Memory V0.2 的迁移、归属权限、全部记忆工具 JSON Schema、Workflow
 5. 注入系统提示词、明确标记为不可信数据的授权记忆，以及 Trigger + JSON Input。根据服务端配置筛选工具。
 6. 检查消息与工具 Schema 的 ContextBytes 预算，调用所选 ModelProvider，累计 Token Usage。
 7. 校验 Tool Call 类型和 ID；一轮可包含多个 Tool Call，按顺序执行，每个结果对应原始 tool_call_id。
-8. 执行前再次检查工具授权、JSON Schema、执行预算和超时；执行后检查输出 Schema 与结果长度，将统一结果信封回传模型。
+8. 执行前再次检查工具授权、JSON Schema、执行预算和超时；执行后检查输出 Schema 与结果长度，将统一结果信封回传模型。可信注册元数据 `ToolSpec.ReadOnly` 标明无写入的工具；其结果超出 ToolResultBytes 时返回可修正的 INVALID_ARGUMENT（实际字节数与预算），让模型缩小 limit/范围或使用工具实际支持的字段投影，不返回或截断正文。单对象仍过大且工具没有分页/投影时应报告读取能力缺口。未标只读的写入/派发仍按原 EXECUTION_LIMIT_EXCEEDED 结束，避免操作已提交后盲目重试。
 9. 得到 stop 完成结果后返回；未知工具、无权限或非法参数以工具错误返回模型。超时、上下文或调用预算超限会结束运行。
 10. 用独立的 5 秒清理上下文保存最终运行记录，即使原调用已取消。持久化失败会明确返回错误，不伪造记录成功。
 
-`agent_type` 只是描述性字段。Runtime 不对角色作硬编码分支。Provider、工具、Agent 数量均可扩展。消息历史当前仅在一次 Run 内维护，不保存聊天正文或原始工具参数；跨 Run 长期上下文来自持久化 Memory。
+`agent_type` 只是描述性字段。Runtime 不对角色作硬编码分支。检索范围、是否继续分页、何时停止调查、是否创建 Workflow、记忆组织及最终回复格式由 Agent 配置和宿主业务协议决定。Runtime 不强制六数据集调查、课程画像、profile_manifest 或初始私有记忆，不因角色追加纠正轮次、要求路由或改写最终回复。合法的模型 stop 响应原样返回；运行 succeeded 只表示技术执行成功，业务完成与结果有效性由宿主核验。
+
+Runtime 将通过工具输出 Schema 校验的结果直接交给模型，不自动删除 null/空字段、解码业务 JSON 列或重排历史证据。`CleanBusinessData` / `CleanQueryData` 仅保留为显式调用的兼容辅助函数，不参与 Runtime 执行；宿主若使用，应自行确认未知值和空值的业务语义。公共系统上下文补充可信执行身份、Workflow 快照、当前 Run 的参考时间，以及数据不能授予权限的边界，不规定检索或记忆写入策略。参考时间取本 Run 审计记录的 StartedAt，包含 current_time_utc、current_time_local、time_zone、local_date；默认 UTC，宿主可用 WithExecutionTimeZone(ctx, owner, "Asia/Shanghai") 设置显示时区。时区上下文按 owner 绑定，业务输入和工具参数不能覆盖；父子 Run 各取自己的启动时间。它不替代来源发布时间或观察时间，不据此自动认定个人完成状态或丢弃历史材料。
+
+Provider、工具、Agent 数量均可扩展。消息历史当前仅在一次 Run 内维护，不保存聊天正文或原始工具参数；跨 Run 长期上下文来自持久化 Memory。
 
 默认限制：8 次模型调用、32 次工具调用、4 层调度、128 KiB 上下文、16 KiB 记忆、32 KiB 单工具输出、2 分钟单 Run、20 秒单工具、每 Agent 同时 4 个 Run。Runtime 默认进程总并发 64，可由宿主在启动时调整。同步子调用无等待队列，满额时返回 RATE_LIMITED，避免父等待子造成死锁。父子运行共享模型和工具调用预算及父级取消上下文；子 Agent 同时遵守自己的限制。超时通过 Go context 传递，注入的自定义 Provider/工具必须遵守取消契约。
 
@@ -90,15 +96,25 @@ go run ./cmd/tool-catalog > tool-catalog.json
 {"ok":false,"data":null,"error":{"code":"PERMISSION_DENIED","message":"tool is not authorized","retryable":false}}
 ```
 
-Memory 工具的 user/agent 归属完全取自 Runtime。`memory_update` 是整条替换。所有 Run 都自动加载当前用户 PUB、当前 Agent PRI 和可信 Workflow PRI 的当前有效记忆，不要求模型先调用 memory_get。
+Memory 工具的 user/agent 归属完全取自 Runtime。`memory_update` 只修改显式提供的顶层字段，省略保持原值；`structured_content` 和 `source_refs` 一旦提供则整字段替换，不做深层合并或追加，显式 null 清除对应可空字段。所有 Run 都自动加载当前用户 PUB、当前 Agent PRI 和可信 Workflow PRI 的当前有效记忆，不要求模型先调用 memory_get。
 
 Data Query 采用结构化查询，只接受 eq/ne/lt/lte/gt/gte/contains，工具默认返回 20 行、最多 100 行、offset 最多 10000。白名单字段与过滤字段都要验证。后端默认只开放 `platform_records` 的安全投影：id、connection_id、source、kind、external_id、parent_id、title、text；不会暴露完整 content、会话、凭据、记忆或系统表。SQL 由 dbbridge 根据固定表达式生成，参数绑定、只读事务、5 秒 statement_timeout；范围限制为当前用户仍启用且 active 的平台连接。当前没有跨用户公共课程数据集；新增此类数据集必须在 DataService 实现课程归属检查。
 
 通知只代表后端接受请求，返回 NotificationReceipt；幂等键原样交给后端通知模块。持久化、去重、用户偏好、静默时间和设备交付由后端服务负责。缺少实现时返回 NOT_IMPLEMENTED；演示使用 Mock，不能视为真实推送验证。
 
+## 工具参数、返回投影与目录校验
+
+工具输入的每个声明字段和嵌套对象字段均附带参数说明；default 仅为注解，仍由既有 handler 应用默认值，update 不会根据注解补入未提供字段。输入和输出 Schema 保持各自运行时校验。`ModelFacingTools` 将同一注册表的输出 Schema 放进标准函数 description，说明共享 `{ok,data,error}` 信封；不在提供商请求中增加非标准 output_schema 字段。Runtime 在计预算前完成投影，OpenAI adapter也可对直接调用安全重复投影且不追加重复说明。只投影已授权工具，宿主专用变体先注册后投影。
+
+可信宿主可用 `Builtins.TransformSpec` 在注册编译前细化特定环境的契约。它不对模型开放，不替换 handler；Learner 暂存工具因此在执行 Schema 和模型视图中同时移除不支持的参数，而不再只在 provider 前隐藏。
+
+`workflow_update` 仍要求 workflow_id、version、name、definition；name与definition为完整替换，definition不做深层合并。处理器先按当前owner读取Workflow，省略的description/status/parent保持原值；显式空description可清除，父节点不可变，陈旧version在写入前拒绝，保存层仍检查并发CAS。需要切换状态时显式提供status，不会因为省略状态而把active变draft。
+
+离线生成/校验目录：`go run ./cmd/tool-catalog > tool-catalog.json`；`go run ./cmd/tool-catalog -prefix memory_ > memory-tool-schemas.json`；两者分别以 `-check tool-catalog.json` 和 `-prefix memory_ -check memory-tool-schemas.json` 比对，不需数据库、提供商或工具执行。记忆搜索/列表最多返回limit条、没有cursor或has_more，不能据此宣称已穷尽；Workflow列表是截短摘要，以最后workflow_id作为after，执行或修改前用workflow_get读取完整定义。
+
 ## 跨数据集调查与 Workflow 私有画像初始化
 
-`data_search` 使用 `data.read` 权限，通过可选 `KeywordSearchService` 执行多关键词 OR 查询。一次接受 1–20 个关键词，每词最多 256 字符；可选择 platform_records、academic_offerings、academic_items、schedules、dws_messages、dws_attachments 六个数据集。结果包含带 dataset 的 hits、各数据集 coverage、has_more 和 next_cursor。模型应继续游标直至 has_more=false，再用 data_query 获取关联记录；搜索不会隐式增加课程过滤。data_query 也返回 has_more，存在后续页时提供 next_offset。宿主没有实现搜索能力时明确返回 NOT_IMPLEMENTED。
+`data_search` 使用 `data.read` 权限，通过可选 `KeywordSearchService` 执行多关键词 OR 查询。一次接受 1–20 个关键词，每词最多 256 字符；可选择 platform_records、academic_offerings、academic_items、schedules、dws_messages、dws_attachments 六个数据集。结果包含带 dataset 的 hits、各数据集 coverage、has_more 和 next_cursor。has_more 仅表示仍有数据页，Agent 按任务需要决定是否继续检索或查询关联记录；它不表示当前任务尚未完成，也不构成 Workflow 写入前置条件。搜索不会隐式增加课程过滤。data_query 也返回 has_more，存在后续页时提供 next_offset。宿主没有实现搜索能力时明确返回 NOT_IMPLEMENTED。
 
 `workflow_create` 可选 `initial_private_memories`，在创建 Workflow 时直接初始化其私有画像。普通创建参数及返回字段保持兼容，workflow_update 不接受该参数。初始记忆接受 title、content、分类及结构化内容等字段，source_refs 必须提供 1–100 个非空字符串或对象；模型不能指定用户、Agent、Workflow、记忆 ID、父记忆或有效期。单次最多 256 条且序列化总量不超过 1 MiB，仍遵守运行输入预算；这些限制约束资源使用，不规定画像事实数量。
 

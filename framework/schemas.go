@@ -31,8 +31,15 @@ func builtinOutputSchema(name string) json.RawMessage {
 		schema = relation
 	case "memory_get_relations":
 		schema = array(relation)
-	case "memory_list", "memory_search":
+	case "memory_search":
 		schema = array(memory)
+	case "memory_list":
+		schema = array(record(map[string]any{
+			"memory_id": text,
+			"title":     map[string]any{"type": "string", "maxLength": 60, "description": "Shortened title for discovery; use memory_get for the full record."},
+			"category":  map[string]any{"type": "string", "maxLength": 24},
+			"status":    enum("active", "archived", "invalid"),
+		}, "memory_id", "title", "status"))
 	case "memory_delete", "workflow_delete":
 		schema = record(map[string]any{"deleted": map[string]any{"const": true}}, "deleted")
 	case "workflow_create":
@@ -67,6 +74,12 @@ func builtinOutputSchema(name string) json.RawMessage {
 	default:
 		schema = map[string]any{}
 	}
-	raw, _ := json.Marshal(schema)
+	// Schema constructors reuse primitive maps; detach nodes before attaching
+	// field-specific descriptions so sibling fields cannot share annotations.
+	plain, _ := json.Marshal(schema)
+	var detached any
+	_ = json.Unmarshal(plain, &detached)
+	describeOutputContract(name, detached)
+	raw, _ := json.Marshal(detached)
 	return raw
 }

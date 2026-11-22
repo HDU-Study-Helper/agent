@@ -1,71 +1,51 @@
-# Learner · 具体实体 Workflow 管理
+# Learner 第二版 · Workflow 暂存编辑协议草案
 
-## 2026-11-09 首次创建画像契约
+[system-prompt.md](system-prompt.md) 为第二版完整提示词，[definition.template.json](definition.template.json) 内嵌同一文本。[prompt.source.md](prompt.source.md) 保留历史材料。本版的暂存宿主已在后端实现最小纵切面，正在隔离分级验收；不能直接安装到尚未部署该宿主的旧直写环境。
 
-实际提示词现要求先以关键词及有来源的别名跨全部授权数据检索，不先限定某个课程或平台；使用 `data_search` 读完游标，再以 `data_query` 查询关联课表、个人作业、教学节点、资料和讨论参与。Host 当前事项快照不代表完整画像。搜索为有界发现摘要，截断字段需按 dataset/id 回读。
+## 两条职责路径
 
-首次 `workflow_create` 同时传入 `initial_private_memories`，原子保存 Workflow PRI 索引和有来源的主题画像。种子每项顶层 `source_refs` 必填；后端赋予新 Workflow 归属，未绑定的 Learner 不因此获得任意 Workflow PRI 权限。`profile_manifest` 说明关键词、检索覆盖和六个画像维度，动态事实放私有记忆，不固化到 Workflow 规则。
+- Filter 请求初始化：确认课程，选择已有或暂存新建 Workflow，形成其定义和记忆，再请求提交。
+- Worker 请求修订：选择当前需要维护的 Workflow，核查反馈及其影响，暂存修订定义、记忆或两者，再请求提交。
 
-Runtime 对 Learner 已开始但尚未完成的关键词分页进行宿主检查，提示继续；未执行写入的 Schema 错误应补齐参数。旧发现页可压缩为引用索引，完整数据仍按稳定ID回查。取消、真正的工具/权限错误及上下文限制仍按真实结果处理。下文早期示例展示旧基础格式，不代表当前完整画像创建请求。
+课程画像体现在 Workflow 定义和记忆中，表达课程身份、特点、追踪范围、用户偏好、现有事实及未知冲突。它不是独立文件或模块，定义与记忆均可演进。
 
+调查保留四层组织：确认对象与已有知识、整体情况与追踪需求、关键细节、关联来源与冲突。初始化形成整体认识，修订围绕问题及影响展开。完整性以能否支持后续工作及是否明确关键未知判断，不强制六数据集、固定主题、记忆数量或所有分页读完。
 
-实例ID由安装后端生成，不在模板中固定。`system-prompt.md` 为实际提示词；`definition.template.json` 内嵌提示词须逐字节一致；`prompt.source.md` 为历史原文。Learner 被动管理当前用户 Workflow，不替代 Filter 路由或 Worker 执行业务，不新增调度器或发现接口。
+## 暂存与统一提交
 
-每个新建或可执行的 Workflow definition 必须含 `entity:{kind:'course'|'competition'|'task'|'identity',id,name}`，ID 和名称必须具体、有证据、非空。课程 ID 按 `source=<来源>|connection=<连接>|course=<课程>|class=<班级>` 稳定组合并转义分隔符，course/class 只纳入真实可得维度，`entity_source` 保留原始组成和 evidence_refs。after.parent_id 指向课程时，以 kind=course 且 external_id=parent_id 精确查源连接并读真实 title；缺真标题或必要标识待补充。禁止 generic“网课/课程/考试”或 unknown/default 等占位实体；缺实体先查证，仍缺返回 NEEDS_INFO，不造 ID，也不建占位 draft。
+第二版要求宿主提供 learner_staging_v2：
 
-匹配要求 active、entity.kind/id 精确一致、目标适用。既有无 entity Workflow 不可复用为 NO_CHANGE；只有明确实体迁移证据和授权才可 UPDATE，不能把旧泛流程改成某门课而影响其他事项。同课程的作业/考试/资料可复用适用流程，不同课程、班级或具体竞赛不可仅因同名共用。
+1. 可信调用路径、用户、暂存会话和目标选择/暂存新建能力。
+2. 每会话只维护一个 Workflow，读取看到基线与本会话修改的合并视图。
+3. 定义、记忆、关系写入只影响暂存，正式数据在提交前不变。
+4. 选定目标后，Learner 能读取与维护其全部记忆，包括未自动注入及不同状态的记录；权限由会话绑定，不能靠模型传参扩大。
+5. 所有必要工具操作的结构、状态和修复过程有宿主记录；有未解决错误、未知操作或未结束任务时不允许提交。
+6. Learner 最终返回 READY_TO_COMMIT，绑定 session_id 和最后核对的 staging_revision。
+7. 宿主在模型结束后检查结果、标记、权限、引用、差异和基线版本，以短事务原子提交，不在模型运行期间持有长数据库事务。
+8. 提交有幂等标识和可查询回执，响应未知先核对结果，不重复执行整次初始化。
 
-允许按多个具体实体多次 CREATE、回读并返回多个结果，不设一次调用一个流程或每缺口一次的提示词次数上限。每次先分页查询和读完整 definition，已创建结果先复用，写入结果未知先核查，防止重复。输入保留 host/Filter 的 `item_id,parent_item_id,entity,item,event`；单项调用返回一个管理结果，多实体请求返回 `{"results":[管理结果,...]}`，每项分别保留真实 Workflow ID、整数版本及 verified。
+暂存可以持久化恢复，但不是正式生效。历史工具错误已经明确修复不必永久阻断，未解决的错误必须阻断。模型的完成标记不是正式提交成功或知识绝对正确的证明。
 
-Learner 管理状态仍为 `APPLIED/NEEDS_INFO/CONFLICT/NO_CHANGE/REJECTED/ERROR`，operation 为 `CREATE/UPDATE/DELETE/NONE`。APPLIED 需真实写入并回读；只表示定义完成。创建后调用方重读真实版本，再由 Worker 执行业务。更新提交 name/description/status 和完整 definition；归档用 UPDATE，删除先核实授权、关联与结果，不能承诺跨调用事务。
+## 操作分支与返回格式
 
-新 definition 必须写入 entity、goal、applicability、instructions、input_contract、output_contract。Worker 输出四业务状态 `COMPLETED/NEEDS_USER_INPUT/PARTIAL/FAILED`；产物含 `type/title/description/entity_ref/data`，具体到实体、事项、时间/材料和证据，data 保留 entity/item_id。NOTICE 仅应用内草案，不声称已发送或送达；资料核查仅目录元数据，不声称已读正文。不以创建流程冒充业务完成。
+operation 为 CREATE、UPDATE、ARCHIVE、DELETE、NONE。只修订记忆也属于 UPDATE；归档与永久删除需明确授权及各自的引用检查；NO_CHANGE 要求本会话确实无差异，不写正式对象。
 
-固定 Worker 工具能力直接写入提示词，无需 Worker 工具发现或用户确认；Learner 自身缺日程工具不代表 Worker 缺能力。启用 5 个 Workflow 工具、8 个 Memory 工具、3 个数据只读工具。严格区分 change_id/record_id/external_id/connection_id，优先中心 ID 精确查证，保留原始结构化证据，工具失败不当空结果。
+模型返回 status 为 READY、NO_CHANGE、NEEDS_INFO、CONFLICT、REJECTED、ERROR。READY 与已核对的 NO_CHANGE 携带 completion 对象；其他状态 completion=null。APPLIED/COMMITTED、正式版本和保存核验由后端提交回执产生，模型不能先行宣称。
 
-模板移除显式 `model_calls/tool_calls` 低次数覆盖，仍服从 Runtime 默认值、期限、循环和其他真实限制。遵守 ctx 取消与用户停止，取消后不新增写入/派发，准确说明已提交、已核验与未知结果。
+提示词含多行缩进的会话布局、定义、记忆内容和最终结果示例。实际工具名与参数以届时 tools 提供的 JSON Schema 为准，没有在草案中虚构已存在的暂存接口。跨字段关系、操作状态和真实数据归属仍由后端检查，排版或格式正确不代表可提交。
 
-`workflow_create` 完整参数示例（假定来源、连接、课程/班级及真实标题均已查证；示例值不能当真实 ID 使用）：
+多课程请求由调用层拆成独立目标会话；不输出一个 results 包装来混合多个目标。定义更新保留父节点及无关内容，提交检查定义和受影响记忆/关系的并发变化。父 Worker 旧快照不自动刷新，提交回执需通知真实版本及影响。
 
-```json
-{
-  "name": "高等数学 · 资料与要求核查",
-  "description": "核查指定课程实体的资料实质变化与行动要求。",
-  "status": "active",
-  "definition": {
-    "schema_version": 1,
-    "kind": "experience_contract",
-    "entity": {
-      "kind": "course",
-      "id": "source=chaoxing|connection=conn-17|course=course-23|class=class-4",
-      "name": "高等数学"
-    },
-    "entity_source": {
-      "source": "chaoxing",
-      "connection": "conn-17",
-      "course": "course-23",
-      "class": "class-4",
-      "evidence_refs": [{"kind": "record_id", "id": "真实课程中心记录ID"}]
-    },
-    "goal": "核查该课程资料变化及行动要求，返回具体有据结果。",
-    "applicability": {
-      "include": ["entity.kind/id一致且有行动要求或实质更新"],
-      "exclude": ["其他实体", "仅首次观察无实质更新的旧目录"]
-    },
-    "input_contract": {"required": ["item_id", "parent_item_id", "entity", "item", "event"]},
-    "instructions": "先get完整active定义与版本，核对entity。created仅首次观察。按中心record_id/源连接查询资料名称、路径、变化和要求，不声称读正文。只执行本item和明确授权，写后回读，遵守ctx取消。无价值目录不强建summary。产物含type/title/description/entity_ref/data，data保留entity/item_id；草案引用null，NOTICE仅应用内DRAFT，不声称送达。",
-    "output_contract": {
-      "fields": ["run_id", "workflow_id", "workflow_version", "status", "summary", "artifacts", "actions", "evidence_refs", "interaction", "collaboration", "evolution_feedback"],
-      "statuses": ["COMPLETED", "NEEDS_USER_INPUT", "PARTIAL", "FAILED"],
-      "artifact_required_fields": ["type", "title", "description", "entity_ref", "data"],
-      "notice_delivery": "in_app_draft_only"
-    }
-  }
-}
-```
+## 宿主实现与当前限制
 
-name/description/status 是工具外层参数，entity 必须在 definition 内；parent_workflow_id 可省略。创建后 get 回读真实 ID、active、entity 及整数 version 才能交 Worker，不能凭示例 ID 派发。
+后端 agent.Service 已在 Learner 入口装配独立暂存 Runtime/Repository，可信 Filter 初始化或 Worker 当前目标修订才能进入。模型看到的 Workflow/Memory 旧工具名称在该入口走暂存，另外提供 learner_stage_select、learner_stage_state；初始化先创建暂存目标再创建记忆，不暴露旧 initial_private_memories 参数。通用 framework 不增加角色业务门槛。
 
-根目录运行 `python3 agent/learner-agent/install.py`；更新须 `--update-agent-id <existing-learner-id>`。脚本使用既有运行环境认证，不将凭据写入文档。控制台提示词上限为64 KiB UTF-8，Learner上下文预算为4 MiB。此次仅修改文件并验证模板契约，不表示已同步实例、迁移存量 Workflow 或真实模型验证。
+v16 提交账本以同会话标识及精确修订保证原子提交和幂等，宿主校验完成标记后生成 APPLIED/NO_CHANGE 加 commit_receipt，供现有调用方消费。未完成或取消不写正式对象，最终审计由宿主统一保存。只改记忆不增加定义版本，提交再次核验具体工具权限和定义/记忆基线。
 
-`created` 仅表示首次观察，不能据此称刚发布；对照 before/after、发布时间和正文判断实质变化与行动价值。普通旧教材目录/material folder 无行动要求或实质更新可忽略，不为每项强建 summary，也不能仅按 resource 类型忽略。workflow_list 即使返回摘要，也必须 get 完整 definition、entity 与版本后才匹配。
+未提交暂存目前只在 Run 内存中，未实现跨进程恢复或跨新 Run 的 request_id 去重。目标内部关系可修改，跨私域关系不新增。父 Worker 快照在定义变更后不自动刷新；归档/删除的调用方需使用提交回执，而非沿用 active Workflow 验收。
+
+数据查询/搜索内容页预算已降至48KiB，为64KiB工具结果封装留余量；超大单字段仍需按现有能力缩小字段或报告限制，没有虚构通用文件分段读取接口。
+
+## 当前验证状态
+
+确定性暂存工具、真实数据库提交/回滚/幂等/冲突/权限撤销、终态审计测试已通过，真实单课程隔离尝试正在调试，尚未完成课程初始化验收。原始尝试与修改收益见工作区闭环记录。没有更新 public 中的 Agent 配置或恢复采集。旧安装脚本没有单独探测宿主版本，部署仍需显式确认后端v16和暂存入口已上线，不能把旧运行服务当作支持新协议。

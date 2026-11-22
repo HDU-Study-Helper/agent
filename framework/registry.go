@@ -16,6 +16,9 @@ func (r Registry) Save(ctx context.Context, owner string, a AgentInstance) (Agen
 	if owner == "" || a.ID == "" || strings.TrimSpace(a.Name) == "" || a.Model.Provider == "" || (a.Model.Model == "" && a.Model.Mode != "default") || (a.Model.Mode != "" && a.Model.Mode != "default" && a.Model.Mode != "custom") || a.SystemPrompt == "" || (a.Status != "enabled" && a.Status != "disabled") {
 		return AgentInstance{}, Fail("INVALID_ARGUMENT", "invalid agent configuration")
 	}
+	if err := ValidateModelParameters(a.Model.Parameters); err != nil {
+		return AgentInstance{}, err
+	}
 	a.OwnerID = owner
 	a.Limits = a.Limits.Defaults()
 	if len(a.SystemPrompt) > a.Limits.ContextBytes/2 {

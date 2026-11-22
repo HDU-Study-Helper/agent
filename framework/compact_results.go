@@ -44,6 +44,15 @@ func compactDispatchData(data any, limit int) (any, bool) {
 			summary[key] = compactText(text, 512)
 		}
 	}
+	// These are handoff data, not optional audit details. Preserve an actionable
+	// question even when large evidence/artifacts force the compact path.
+	if value := original["interaction"]; len(value) > 0 && string(value) != "null" {
+		summary["interaction"] = value
+	}
+	var childText string
+	if json.Unmarshal(original["text"], &childText) == nil && childText != "" {
+		summary["text"] = compactText(childText, 2048)
+	}
 	refs := []any{}
 	var artifacts []map[string]json.RawMessage
 	json.Unmarshal(original["artifacts"], &artifacts)
@@ -89,6 +98,21 @@ func compactDispatchData(data any, limit int) (any, bool) {
 			delete(summary, "summary")
 			delete(summary, "reason")
 			delete(summary, "note")
+			if childText != "" {
+				summary["text"] = compactText(childText, 256)
+			}
+			// An exceptionally large CHOICE list can still exceed the caller's
+			// budget. Never discard the server-issued identity needed to answer.
+			if v, ok := summary["interaction"].(json.RawMessage); ok {
+				var q struct {
+					ID   string `json:"question_id"`
+					Text string `json:"question"`
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(v, &q) == nil && q.ID != "" {
+					summary["interaction"] = map[string]any{"question_id": q.ID, "type": q.Type, "question": compactText(q.Text, 192), "details_omitted": true}
+				}
+			}
 		}
 	}
 	return nil, false

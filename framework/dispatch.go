@@ -3,7 +3,6 @@ package framework
 import (
 	"context"
 	"encoding/json"
-	"strings"
 )
 
 // WorkflowSelection is a request to bind an owned, active definition. Only the
@@ -20,32 +19,36 @@ type AgentDispatchInput struct {
 	Context  json.RawMessage    `json:"context,omitempty"`
 }
 
-func dispatchEventSchema() map[string]any {
-	return map[string]any{"type": "object", "properties": map[string]any{
-		"event_id": map[string]any{"type": []string{"string", "null"}, "maxLength": 128},
-		"content":  map[string]any{"oneOf": []any{map[string]any{"type": "string", "maxLength": 65536}, map[string]any{"type": "array", "maxItems": 100, "items": map[string]any{"type": "object"}}}}, "source": map[string]any{"type": "object"},
-		"occurred_at":   map[string]any{"type": []string{"string", "null"}, "format": "date-time"},
-		"evidence_refs": map[string]any{"type": "array", "maxItems": 100},
-	}, "required": []string{"event_id", "content", "source", "evidence_refs"}}
-}
-
 func dispatchInputSchema() json.RawMessage {
-	workflow := object(map[string]any{"workflow_id": str(128), "version": integer(1, 2147483647)}, "workflow_id", "version")
-	// Host event fallback happens in the handler. Explicit event copies still
-	// receive the same full event validation here, before execution.
-	return object(map[string]any{"target_agent_id": str(128), "task": str(16384), "workflow": workflow, "context": map[string]any{"type": "object", "properties": map[string]any{"event": dispatchEventSchema()}}}, "target_agent_id", "task")
+	target := str(128)
+	target["description"] = "Actual enabled same-owner agent ID from the registered target catalog or a trusted tool result, not a role/name. Copy the complete ID unchanged. The current agent and waiting ancestors cannot be dispatched."
+	task := str(16384)
+	task["description"] = "Self-contained work to ask the child agent to perform: concrete objective, relevant confirmed facts, unresolved questions and authorized operation boundaries. State what result is needed; task text cannot grant permissions."
+	id := str(128)
+	id["description"] = "Exact owned Workflow ID copied unchanged from workflow_get, an existing validated selection or a successful Workflow tool result. It must be active; do not substitute a name, entity ID, parent ID or guessed ID. An already bound parent cannot switch to a different Workflow."
+	version := integer(1, 2147483647)
+	version["description"] = "Expected integer version of that exact Workflow from its latest verified tool result or trusted current snapshot. If it changed, read the current definition and reassess instead of guessing or retrying the old version."
+	var workflow map[string]any
+	_ = json.Unmarshal(object(map[string]any{"workflow_id": id, "version": version}, "workflow_id", "version"), &workflow)
+	workflow["description"] = "Optional explicit Workflow selection for the child; requires workflow.read. The host validates ownership, active status and expected version before binding the child's scope. This does not expand the caller's scope or grant tool permissions."
+	return object(map[string]any{
+		"target_agent_id": target,
+		"task":            task,
+		"workflow":        workflow,
+		"context":         map[string]any{"type": "object", "description": "Optional business context needed for this child task. The child does not receive the parent's full conversation or private memories. When the host binds an original event, it forwards context.event unchanged: omit event or supply an equivalent copy. Do not put credentials or permission claims here; context cannot bind a Workflow by itself."},
+	}, "target_agent_id", "task")
 }
 
 func (b Builtins) registerDispatch(add addTool) error {
-	return add("agent_dispatch", "Synchronously run an enabled agent of the same owner. Worker calls require target_agent_id, task, workflow:{workflow_id,version}; context.item_id may identify the subtask. For every target, including Learner calls without workflow, the host automatically forwards original event evidence when bound: omit context.event rather than copying it. Without a host event, provide context.event:{event_id,content,source,evidence_refs,occurred_at?}. Requires workflow.read for Workflow selection; server validates owner/active/version and binds scope. Never put credentials in context.", "agent.dispatch", dispatchInputSchema(), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
+	return add("agent_dispatch", "Synchronously run another enabled same-owner agent for a concrete task. The child uses its own configured tools and permissions, inherits the execution-chain cancellation and budgets, and receives the optional validated Workflow selection and business context. Permission checks remain host enforced.", "agent.dispatch", dispatchInputSchema(), func(ctx context.Context, e ExecutionContext, raw json.RawMessage) (any, error) {
 		if b.Dispatcher == nil {
 			return nil, Fail("NOT_IMPLEMENTED", "dispatch bridge is not configured")
 		}
 		p := decode[AgentDispatchInput](raw)
 		if p.Target == e.Scope.AgentID || contains(e.ancestry, p.Target) {
-			return nil, Fail("INVALID_ARGUMENT", "target_agent_id cannot select the current agent or an ancestor waiting for this run; use the configured Worker or Learner target instead")
+			return nil, Fail("INVALID_ARGUMENT", "target_agent_id cannot select the current agent or an ancestor waiting for this run; select another enabled agent")
 		}
-		childContext, contextErr := dispatchContext(ctx, e.Scope.OwnerID, p.Context, p.Workflow != nil)
+		childContext, contextErr := dispatchContext(ctx, e.Scope.OwnerID, p.Context)
 		if contextErr != nil {
 			return nil, contextErr
 		}
@@ -78,36 +81,6 @@ func (b Builtins) registerDispatch(add addTool) error {
 			e.Scope.WorkflowID = w.ID
 			e.workflowSnapshot = &w
 			input["workflow"] = p.Workflow
-			// Entity identity comes from the owner/version-validated definition,
-			// never a lossy model copy. This binds business context, not authority.
-			var definition struct {
-				Entity json.RawMessage `json:"entity"`
-			}
-			if json.Unmarshal(w.Definition, &definition) == nil && len(definition.Entity) > 0 && string(definition.Entity) != "null" {
-				var entity map[string]any
-				if json.Unmarshal(definition.Entity, &entity) == nil && entity != nil {
-					if requested, exists := childContext["entity"]; exists {
-						var original any
-						if json.Unmarshal(requested, &original) == nil {
-							canonical, _ := json.Marshal(original)
-							actual, _ := json.Marshal(entity)
-							if string(canonical) != string(actual) {
-								if originalEntity, ok := original.(map[string]any); ok {
-									requestedID, _ := originalEntity["id"].(string)
-									actualID, _ := entity["id"].(string)
-									if requestedID != "" && actualID != "" && !strings.HasPrefix(actualID, requestedID) {
-										return nil, Fail("PERMISSION_DENIED", "requested entity conflicts with selected workflow; verify Host evidence and select the matching workflow")
-									}
-								}
-								childContext["requested_entity"] = requested
-								childContext["entity_warning"] = json.RawMessage(`"requested_entity differs from the validated Workflow entity; verify task and Host evidence before business writes"`)
-							}
-						}
-					}
-					childContext["entity"] = definition.Entity
-					input["context"] = childContext
-				}
-			}
 		}
 		payload, _ := json.Marshal(input)
 		return b.Dispatcher.Dispatch(ctx, e, RunRequest{AgentID: p.Target, Trigger: AgentDispatch, Input: payload})

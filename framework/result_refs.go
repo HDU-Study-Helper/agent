@@ -3,11 +3,31 @@ package framework
 // toolResultRefs is deliberately allowlisted: references come from successful
 // registered persistence tools after output-schema validation, never model text.
 func toolResultRefs(name string, result ToolResult) []ToolResultRef {
-	if !result.OK || result.Error != nil || (name != "memory_create" && name != "memory_update" && name != "workflow_create") {
+	if !result.OK || result.Error != nil {
 		return nil
 	}
 	data, ok := result.Data.(map[string]any)
 	if !ok {
+		return nil
+	}
+	switch name {
+	case "public_todo_upsert", "public_todo_complete", "notice_create", "planned_job_create", "planned_job_cancel":
+		id, _ := data["id"].(string)
+		kind, _ := data["kind"].(string)
+		if id == "" || len(id) > 160 {
+			return nil
+		}
+		switch {
+		case (name == "public_todo_upsert" || name == "public_todo_complete") && kind == "todo":
+			return []ToolResultRef{{Kind: "TASK", ID: id}}
+		case name == "notice_create" && kind == "notice":
+			return []ToolResultRef{{Kind: "NOTICE", ID: id}}
+		case (name == "planned_job_create" || name == "planned_job_cancel" || name == "notice_create") && kind == "job":
+			return []ToolResultRef{{Kind: "PLANNED_JOB", ID: id}}
+		}
+		return nil
+	case "memory_create", "memory_update", "workflow_create":
+	default:
 		return nil
 	}
 	if name == "workflow_create" {

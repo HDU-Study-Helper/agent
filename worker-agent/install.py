@@ -25,6 +25,12 @@ def verify_installation(definition,created,readback,owner_id):
   actual=created.get(key)
   matches=all(actual.get(k)==v for k,v in value.items()) if key=='limits' and isinstance(actual,dict) else actual==value
   if not matches or readback.get(key)!=actual:raise RuntimeError('Readback mismatch '+key)
+def resolve_dispatch_targets(agents,owner_id):
+ matches=[v for v in agents if v.get('owner_user_id')==owner_id and v.get('agent_type')=='learner' and v.get('status')=='enabled']
+ if len(matches)!=1 or not matches[0].get('agent_id'):
+  raise RuntimeError('Expected exactly one enabled learner belonging to the authenticated account; configure Learner before installing Worker')
+ return {'{{LEARNER_AGENT_ID}}':matches[0]['agent_id']}
+
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--origin',default='http://127.0.0.1:2610')
 p.add_argument('--update-agent-id',help='Explicit existing Worker ID to replace; otherwise refuse duplicate Workers')
@@ -51,6 +57,9 @@ settings=call('/agents/settings');configured=[v for v in settings['providers'] i
 if not configured:raise RuntimeError('No configured model with saved key and default model')
 provider=configured[0]
 definition=json.loads((Path(__file__).parent/'definition.template.json').read_text());definition['model_config']={'provider':provider['name'],'model':provider['default_model']}
+for placeholder,target in resolve_dispatch_targets(agents,actor['id']).items():
+ if placeholder not in definition['system_prompt']:raise RuntimeError('Worker template is missing target placeholder '+placeholder)
+ definition['system_prompt']=definition['system_prompt'].replace(placeholder,target)
 catalog={v['name']:v for v in call('/agents/tools')['items']}
 assert set(definition['enabled_tools'])<=catalog.keys()
 assert {permission for name in definition['enabled_tools'] for permission in catalog[name]['permissions']}==set(definition['permissions'])
@@ -58,7 +67,7 @@ endpoint='/agents/instances'+('/'+a.update_agent_id if a.update_agent_id else ''
 created=call(endpoint,'PUT' if a.update_agent_id else 'POST',definition,200 if a.update_agent_id else 201)
 readback=next(v for v in list_owner_agents(call) if v['agent_id']==created['agent_id'])
 verify_installation(definition,created,readback,actor['id'])
-report={'passed':True,'agent_id':created['agent_id'],'name':created['name'],'owner_user_id':created['owner_user_id'],'model_config':created['model_config'],'status':created['status'],'enabled_tools':created['enabled_tools'],'permissions':created['permissions'],'verified':['registered_tool_names','exact_permissions','owner_scope','persisted_prompt_and_configuration'],'model_run_performed':False}
+report={'passed':True,'agent_id':created['agent_id'],'name':created['name'],'owner_user_id':created['owner_user_id'],'model_config':created['model_config'],'status':created['status'],'enabled_tools':created['enabled_tools'],'permissions':created['permissions'],'verified':['registered_tool_names','exact_permissions','owner_scope','persisted_prompt_and_configuration','same_owner_unique_learner_target'],'model_run_performed':False}
 (root/'.build').mkdir(parents=True,exist_ok=True)
 (root/'.build/worker-installation.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(report,ensure_ascii=False))

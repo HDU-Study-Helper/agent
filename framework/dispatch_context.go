@@ -1,6 +1,7 @@
 package framework
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"reflect"
@@ -18,7 +19,7 @@ func WithDispatchEvent(ctx context.Context, owner string, event json.RawMessage)
 	return context.WithValue(ctx, dispatchEventKey{}, dispatchEvent{owner: owner, event: append(json.RawMessage(nil), event...)})
 }
 
-func dispatchContext(ctx context.Context, owner string, raw json.RawMessage, requireEvent bool) (map[string]json.RawMessage, error) {
+func dispatchContext(ctx context.Context, owner string, raw json.RawMessage) (map[string]json.RawMessage, error) {
 	child := map[string]json.RawMessage{}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &child); err != nil || child == nil {
@@ -29,51 +30,29 @@ func dispatchContext(ctx context.Context, owner string, raw json.RawMessage, req
 	if hasHost && bound.owner != owner {
 		return nil, Fail("PERMISSION_DENIED", "original dispatch event belongs to another owner")
 	}
-	supplied, hasSupplied := child["event"]
 	if hasHost {
-		if err := validateDispatchEvent(bound.event); err != nil {
-			return nil, Fail("INVALID_ARGUMENT", "host original dispatch event is invalid")
+		original, err := dispatchEventObject(bound.event)
+		if err != nil {
+			return nil, Fail("INVALID_ARGUMENT", "host original dispatch event must be a JSON object")
 		}
-		if !hasSupplied {
-			child["event"] = append(json.RawMessage(nil), bound.event...)
-		} else {
-			if err := validateDispatchEvent(supplied); err != nil {
-				return nil, err
-			}
-			var original, provided map[string]any
-			_ = json.Unmarshal(bound.event, &original)
-			_ = json.Unmarshal(supplied, &provided)
-			// Keep explicit compatible legacy copies, but do not allow replacing the
-			// original event identity, evidence or source under a trusted event binding.
-			for _, key := range []string{"event_id", "content", "source", "evidence_refs"} {
-				if !reflect.DeepEqual(original[key], provided[key]) {
-					return nil, Fail("INVALID_ARGUMENT", "context.event differs from the host original event; omit context.event to forward original evidence unchanged")
-				}
+		if supplied, ok := child["event"]; ok {
+			provided, err := dispatchEventObject(supplied)
+			if err != nil || !reflect.DeepEqual(original, provided) {
+				return nil, Fail("INVALID_ARGUMENT", "context.event differs from the host original event; omit context.event to forward the original event unchanged")
 			}
 		}
-	} else if requireEvent && !hasSupplied {
-		return nil, Fail("INVALID_ARGUMENT", "Workflow dispatch requires context.event:{event_id,content,source,evidence_refs} when no host original event is bound")
-	}
-	if event, ok := child["event"]; ok {
-		if err := validateDispatchEvent(event); err != nil {
-			return nil, err
-		}
+		// Forward the complete host value, including fields unknown to the framework.
+		child["event"] = append(json.RawMessage(nil), bound.event...)
 	}
 	return child, nil
 }
 
-func validateDispatchEvent(raw json.RawMessage) error {
-	encoded, _ := json.Marshal(dispatchEventSchema())
-	schema, err := compileSchema(encoded)
-	if err != nil {
-		return Fail("INTERNAL_ERROR", "dispatch event schema unavailable")
+func dispatchEventObject(raw json.RawMessage) (map[string]any, error) {
+	var value map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if !json.Valid(raw) || decoder.Decode(&value) != nil || value == nil {
+		return nil, Fail("INVALID_ARGUMENT", "dispatch event must be a JSON object")
 	}
-	var value any
-	if json.Unmarshal(raw, &value) != nil {
-		return Fail("INVALID_ARGUMENT", "context.event must be valid JSON")
-	}
-	if err = schema.Validate(value); err != nil {
-		return Fail("INVALID_ARGUMENT", inputSchemaError(err, encoded))
-	}
-	return nil
+	return value, nil
 }

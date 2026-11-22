@@ -28,6 +28,12 @@ func TestHostEvidenceScopeAndCapabilities(t *testing.T) {
 	if err != nil || strings.Contains(text, "workflow_summaries") {
 		t.Fatal(text, err)
 	}
+	e.Permissions = []string{"data.read", "workflow.read"}
+	e.EnabledTools = nil
+	text, err = hostEvidenceMessage(ctx, e)
+	if err != nil || text != "" {
+		t.Fatal("disabled tools exposed host data", text, err)
+	}
 }
 func TestRuntimeDoesNotTrustJSONHostEvidence(t *testing.T) {
 	repo := newFakeRepo()

@@ -124,13 +124,13 @@ func (g *modelGate) release() {
 
 // request retries model HTTP only. No returned tool call is executed until one
 // complete response is accepted, and no tool side effect is retried here.
-func (p *OpenAIProvider) request(ctx context.Context, payload, output any) error {
+func (p *OpenAIProvider) request(ctx context.Context, path string, payload, output any) error {
 	for attempt := 0; ; attempt++ {
 		if err := p.gate.acquire(ctx, p.maxConcurrent); err != nil {
 			return err
 		}
 		modelState(ctx, "model")
-		err := postJSON(ctx, p.client, p.base+"/chat/completions", p.key, payload, output)
+		err := postJSON(ctx, p.client, p.base+path, p.key, payload, output)
 		p.gate.release()
 		if err == nil {
 			return nil

@@ -1,35 +1,31 @@
-# 统一 Worker 调用参数
+# 通用 Agent 调度
 
-继续使用既有 `agent_dispatch`，没有新增 `workflow_run`，不改变Workflow的经验契约定位。
+`agent_dispatch` 同步调用同一 owner 下已启用的 Agent。框架提供目标校验、可信执行范围传递与运行预算，不按角色决定业务分工、检索步骤或最终答复格式。
 
 ```json
 {
-  "target_agent_id": "<verified-worker-agent-id>",
-  "task": "仅处理该Workflow所属的原始事件；先查询再执行，写后核验。",
-  "workflow": {"workflow_id": "实际active Workflow ID", "version": 1},
+  "target_agent_id": "<registered-agent-id>",
+  "task": "处理指定子任务",
+  "workflow": {"workflow_id": "实际 active Workflow ID", "version": 1},
   "context": {
-    "event": {
-      "event_id": "真实原始事件ID或null",
-      "content": "原始正文，不改写",
-      "source": {"platform": "manual", "source_id": "真实来源ID"},
-      "occurred_at": "2026-11-05T10:00:00+08:00",
-      "evidence_refs": []
-    },
+    "custom_input": {"values": [1, false, null]},
     "related_run_id": null
   }
 }
 ```
 
-`target_agent_id`、字符串`task`始终必填。指定`workflow`时，ID及正整数version必填，`context.event`必须包含event_id（可null）、content（非空正文字符串，或最多100项的结构化变化对象数组）、source对象及evidence_refs数组；occurred_at可省略/null或RFC3339。原事件和来源保持原样，子任务边界写task。输入字段不是身份凭证。
+`target_agent_id` 和字符串 `task` 必填。`workflow` 与 `context` 都可省略。提供 `workflow` 时，其 ID 和正整数 version 必填；提供 `context` 时，它可以是任意 JSON 对象。是否传递事件、实体或其他业务字段由调用方与宿主协议决定。框架不从 Workflow 定义提取 entity 覆盖模型 context，也不添加实体差异警告。输入中的 owner、权限或 Workflow 文本不构成授权。
 
-工具验证Schema后，使用Runtime可信OwnerID查询Workflow；必须属于当前用户、状态active且版本一致。调用方同时需要`agent.dispatch`和`workflow.read`。已绑定其他Workflow的父调用禁止切换。后端只为子Run绑定经验证的scope，Filter自身和后续工具不会获得该Workflow PRI权限。工具不按agent_type硬编码，其他通用Agent也可使用同一契约。
+调用方需要 `agent.dispatch`。选择 Workflow 还需要 `workflow.read`：工具使用 Runtime 的可信 OwnerID 查询，验证 Workflow 属于当前用户、状态为 active、版本一致。已绑定 Workflow 的父调用不能切换到其他 Workflow。工具为子调用绑定验证后的 scope 和快照，父调用自身及后续工具不会因此新增该 Workflow PRI 权限。
 
-子Runtime重新检查当前Workflow与选定版本，若选择与启动之间变化返回CONFLICT。通过后注入完整Workflow快照、真实run_id/parent_run_id及可信身份；RunRecord的JSONB中保存workflow_id/version/snapshot，无新数据库表或迁移。运行中的快照不随定义更新而变化；后续workflow_get仍读取最新定义，Worker需比较版本，发生变化停相关写入并重新评估。这里没有跨整个Run的数据库锁，归档/删除不会自动撤销已提交操作或取消运行。
+省略 `workflow` 的调用保留 `task/context` 包装，并继承父调用已有的可信 Workflow。`context.workflow`、`context.workflow_id` 或原始 RunRequest JSON 都不能建立新的可信绑定。只有验证后的工具处理器或宿主 `WorkflowContext` 可以绑定执行范围。
 
-返回值沿现有进程内Bridge同步回到父模型的tool消息，结构仍为`{run_id,output,error}`。output为子Agent最终文本，Worker应为JSON；父方必须解析业务status，Runtime成功不等于业务完成。工具结果大小、超时、调度深度、循环检查和共享预算继续生效。子任务已执行但返回超时/结果过大时不能假定无副作用，不能盲重试。
+宿主可以通过 `WithDispatchEvent` 在可信 Go context 中绑定同 owner 的原始事件。该事件必须为 JSON 对象，框架不规定业务字段。调度时会将完整原始对象转发到 `context.event`；调用方可省略该字段，显式提供时必须与宿主事件全部内容一致，不能删除、添加或改写字段。框架保留数字精度以防不同大整数被误判为相同。没有宿主绑定时，`context.event` 与其他业务字段一样原样传递，不受事件 schema 限制。事件来源不会授予权限。
 
-不带workflow的其他Agent调用保留原`task/context`包装，继承父方已有可信Workflow；`context.workflow`或`context.workflow_id`不会新增授权。不把原始RunRequest JSON当成可信绑定入口；只有经校验的工具处理器或宿主`WorkflowContext`可以绑定。
+子 Runtime 重新检查 Workflow 与选定版本，选择与启动之间发生变化会返回 `CONFLICT`。通过后，Runtime 注入完整的可信 Workflow 快照、真实 run_id/parent_run_id 与执行身份，并在 RunRecord 中保存 Workflow ID、版本和快照。模型 context 中的业务字段与这份可信快照分别保留。运行中的快照不随定义更新而变化，后续 `workflow_get` 读取最新定义。同一 owner/Workflow 的运行通过宿主提供的 WorkflowLocker 串行，未提供时使用进程内锁；等待支持 context 取消。归档或删除不会自动撤销已提交操作或取消运行。
 
-Filter实例已授权agent_dispatch，对确认的Worker目标实际调用。缺少适用流程时先调用Learner评估，创建或复用后workflow_get核验实际active版本，再调Worker；独立Workflow可并行，依赖顺序必须保留。事件变化数组和evidence_links保持结构化，change_id不代替platform_records.id。保留真实子结果，出现部分失败返回PARTIAL。Worker按统一输入解包，使用真实RunID及绑定版本；无需新Workflow执行引擎。Filter的模型调用预算由父子共享，默认32轮覆盖首次建流程与最终汇总。
+返回值通过进程内 Bridge 同步回到父模型的 tool 消息，结构为 `{run_id,output,error}`，output 是子 Agent 的最终文本。角色专属 JSON 输出、业务状态、派发顺序和具体 Workflow 流程属于宿主协议，可由 Agent 配置与宿主输入约定。框架运行成功仅表示运行完成，业务完成由消费结果的宿主判断。
 
-验证：框架单元/race/vet覆盖统一输入、旧调用兼容、版本冲突、归属、状态、额外权限、上下文切换及父子scope隔离。后端`TestUnifiedWorkerDispatchPersisted`在独立PostgreSQL测试库中运行真实Runtime→工具→内部Bridge→子Runtime，验证原事件/私有记忆范围/结果回传及快照审计持久化。测试使用Mock模型，不调用真实教学平台或写生产业务数据。
+工具输入和输出 schema、owner 与权限隔离、Workflow 版本、取消、结果大小、超时、调度深度、循环检查和父子共享预算继续生效。子任务已执行但返回超时或结果过大时，调用方应依据真实运行记录判断副作用，再决定是否重试。
+
+回归测试覆盖任意 context、无事件调度、业务 entity 不改写、完整宿主事件转发与防替换，以及 owner、权限、版本、scope、循环调用和父子隔离。宿主可在自己的测试中验证具体角色协议与持久化流程。

@@ -12,7 +12,7 @@
 | 组织 | 平铺 | L0–L3 + 可空父记忆，可跳层，不要求完整树 |
 | 关联 | 无 | `memory_relations` 有向直接关联，与父子组织分离 |
 | 自动上下文 | 当前 Agent 的记忆 | 当前用户 PUB + 当前 Agent PRI + 当前 Workflow PRI，限当前有效 |
-| 主动工具 | 6 个 CRUD/检索工具 | 8 个记忆工具，含关联创建和查询，memory_list 保留为搜索别名 |
+| 主动工具 | 6 个 CRUD/检索工具 | 8 个记忆工具，含关联创建和查询，memory_list 提供精简记忆索引 |
 
 ```mermaid
 flowchart LR
@@ -80,7 +80,7 @@ Runtime 再验证 Workflow 的归属与状态，将 WorkflowID 写入 ExecutionC
 |---|---|
 | memory_create | 归属、BASE/TEMP、PERSONAL、L0–L3、父 ID、内容、结构化内容、来源、有效期、状态、priority；旧参数只传 title/content 时默认当前 Agent PRI、BASE、L1、active |
 | memory_search | query、归属、类型、PERSONAL、层级、状态、父 ID、validity、limit；默认 active/current，最多100条 |
-| memory_list | memory_search 兼容别名，语义相同 |
+| memory_list | 筛选与排序同 memory_search；仅返回 ID、短标题、可选分类和状态，正文与来源用 memory_get |
 | memory_get | 按 ID 执行归属检查；可显式读取历史记录，调用者须查看 status 与有效期 |
 | memory_update | 按显式字段 PATCH；省略字段保留，null 清除可空字段；变更归属重新验证 |
 | memory_delete | 硬删除，级联关联、解除子记忆 parent 引用 |

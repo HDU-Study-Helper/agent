@@ -31,13 +31,20 @@ func TestOpenAIChatWireProtocol(t *testing.T) {
 		var tools []struct {
 			Type     string `json:"type"`
 			Function struct {
-				Name       string          `json:"name"`
-				Parameters json.RawMessage `json:"parameters"`
+				Name        string          `json:"name"`
+				Description string          `json:"description"`
+				Parameters  json.RawMessage `json:"parameters"`
 			} `json:"function"`
 		}
 		_ = json.Unmarshal(payload["tools"], &tools)
 		if len(tools) != 1 || tools[0].Type != "function" || tools[0].Function.Name != "test" {
 			t.Error("tool schema mismatch")
+		}
+		if len(tools) == 1 && !strings.Contains(tools[0].Function.Description, "Return contract") {
+			t.Error("output contract not transmitted through standard description")
+		}
+		if strings.Contains(string(payload["tools"]), "\"output_schema\":") {
+			t.Error("nonstandard output_schema wire field")
 		}
 		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"next","type":"function","function":{"name":"test","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":20,"completion_tokens":5,"total_tokens":25}}`)
 	}))
@@ -46,7 +53,7 @@ func TestOpenAIChatWireProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := p.Complete(context.Background(), ModelRequest{Config: ModelConfig{Model: "test-model", MaxTokens: 100}, Messages: []Message{{Role: "user", Content: "hi"}, {Role: "assistant", ToolCalls: []ToolCall{call("id", "test", `{}`)}}, {Role: "tool", ToolCallID: "id", Content: `{"ok":true}`}}, Tools: []ToolSpec{{Name: "test", Description: "test", InputSchema: json.RawMessage(`{"type":"object"}`)}}})
+	response, err := p.Complete(context.Background(), ModelRequest{Config: ModelConfig{Model: "test-model", MaxTokens: 100}, Messages: []Message{{Role: "user", Content: "hi"}, {Role: "assistant", ToolCalls: []ToolCall{call("id", "test", `{}`)}}, {Role: "tool", ToolCallID: "id", Content: `{"ok":true}`}}, Tools: []ToolSpec{{Name: "test", Description: "test", InputSchema: json.RawMessage(`{"type":"object"}`), OutputSchema: json.RawMessage(`{"type":"object","description":"test output"}`)}}})
 	if err != nil || response.Usage.TotalTokens != 25 || response.Message.ToolCalls[0].ID != "next" {
 		t.Fatalf("%+v %v", response, err)
 	}

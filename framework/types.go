@@ -102,7 +102,8 @@ func (l Limits) Defaults() Limits {
 }
 
 type AgentDefinition struct {
-	Name         string      `json:"name"`
+	Name string `json:"name"`
+	// Type is descriptive host metadata; Runtime never selects business policy by role.
 	Type         string      `json:"agent_type"`
 	SystemPrompt string      `json:"system_prompt"`
 	Model        ModelConfig `json:"model_config"`
@@ -158,26 +159,35 @@ type ToolExecution struct {
 	Error      *Error          `json:"error,omitempty"`
 	ResultRefs []ToolResultRef `json:"result_refs,omitempty"`
 }
+
+// OutputCorrection records a rejected final response without storing private text.
+type OutputCorrection struct {
+	Attempt int                  `json:"attempt"`
+	Kind    OutputValidationKind `json:"kind"`
+	Code    string               `json:"code"`
+}
+
 type RunRecord struct {
-	ID               string          `json:"run_id"`
-	OwnerID          string          `json:"owner_user_id"`
-	AgentID          string          `json:"agent_id"`
-	ParentRunID      string          `json:"parent_run_id,omitempty"`
-	WorkflowID       string          `json:"workflow_id,omitempty"`
-	WorkflowVersion  int             `json:"workflow_version,omitempty"`
-	WorkflowSnapshot *Workflow       `json:"workflow_snapshot,omitempty"`
-	DispatcherID     string          `json:"dispatcher_agent_id,omitempty"`
-	Trigger          Trigger         `json:"trigger"`
-	Status           string          `json:"status"`
-	StartedAt        time.Time       `json:"started_at"`
-	FinishedAt       *time.Time      `json:"finished_at,omitempty"`
-	DurationMS       int64           `json:"duration_ms"`
-	ModelCalls       int             `json:"model_calls"`
-	ToolCalls        int             `json:"tool_calls"`
-	ToolExecutions   []ToolExecution `json:"tool_executions,omitempty"`
-	Usage            Usage           `json:"usage"`
-	Error            *Error          `json:"error"`
-	StopReason       string          `json:"stop_reason"`
+	ID                string             `json:"run_id"`
+	OwnerID           string             `json:"owner_user_id"`
+	AgentID           string             `json:"agent_id"`
+	ParentRunID       string             `json:"parent_run_id,omitempty"`
+	WorkflowID        string             `json:"workflow_id,omitempty"`
+	WorkflowVersion   int                `json:"workflow_version,omitempty"`
+	WorkflowSnapshot  *Workflow          `json:"workflow_snapshot,omitempty"`
+	DispatcherID      string             `json:"dispatcher_agent_id,omitempty"`
+	Trigger           Trigger            `json:"trigger"`
+	Status            string             `json:"status"`
+	StartedAt         time.Time          `json:"started_at"`
+	FinishedAt        *time.Time         `json:"finished_at,omitempty"`
+	DurationMS        int64              `json:"duration_ms"`
+	ModelCalls        int                `json:"model_calls"`
+	ToolCalls         int                `json:"tool_calls"`
+	ToolExecutions    []ToolExecution    `json:"tool_executions,omitempty"`
+	OutputCorrections []OutputCorrection `json:"output_corrections,omitempty"`
+	Usage             Usage              `json:"usage"`
+	Error             *Error             `json:"error"`
+	StopReason        string             `json:"stop_reason"`
 }
 type RunResult struct {
 	RunID  string `json:"run_id"`
@@ -316,6 +326,8 @@ type Message struct {
 	Content    string     `json:"content"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
+	// Responses items are transient wire history, not part of the logical transcript.
+	responsesItems []json.RawMessage
 }
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
